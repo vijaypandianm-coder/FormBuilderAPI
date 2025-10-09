@@ -1,48 +1,67 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
-using FormBuilderAPI.Services;
 using FormBuilderAPI.Models.SqlModels;
+using FormBuilderAPI.Services;
 
 namespace FormBuilderAPI.Controllers
 {
     [ApiController]
-    [Route("api/[controller]")]
-    [Authorize(Policy = "RequireLearnerOrAdmin")]
+    [Route("api")]
     public class ResponsesController : ControllerBase
     {
-        private readonly ResponseService _responseService;
-        public ResponsesController(ResponseService responseService) => _responseService = responseService;
+        private readonly ResponseService _responses;
+        public ResponsesController(ResponseService responses) => _responses = responses;
 
-        [HttpPost("{formId}")]
-        public async Task<IActionResult> SubmitResponse(string formId, [FromBody] List<FormResponseAnswer> answers)
+        private bool IsAdmin => User.IsInRole("Admin");
+        private long? CurrentUserIdLong =>
+            long.TryParse(
+                User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
+                User.FindFirst("sub")?.Value, out var id) ? id : null;
+
+        // Submit
+        [HttpPost("forms/{formId}/responses")]
+        [Authorize(Policy = "RequireLearnerOrAdmin")]
+        public async Task<IActionResult> Submit(string formId, [FromBody] List<FormResponseAnswer> answers)
         {
-            // user id from JWT (we stored Users.Id as string in sub)
-            var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) 
-                      ?? User.FindFirstValue(ClaimTypes.Name) 
-                      ?? User.FindFirstValue("sub");
-
-            if (string.IsNullOrWhiteSpace(sub) || !int.TryParse(sub, out var userId))
-                return Unauthorized("Invalid user id in token.");
+            if (CurrentUserIdLong is null) return Unauthorized("Invalid token.");
 
             var response = new FormResponse
             {
                 FormId = formId,
-                UserId = userId,
+                UserId = CurrentUserIdLong.Value,
                 SubmittedAt = DateTime.UtcNow
             };
 
-            var saved = await _responseService.SaveAsync(response, answers);
+            var saved = await _responses.SaveAsync(response, answers);
             return Ok(saved);
         }
 
-        [HttpGet("{formId}")]
-        [Authorize(Policy = "RequireAdmin")] // usually only admins view all responses
-        public async Task<IActionResult> GetResponses(string formId)
+        // List (admin & learners)
+        // /api/responses?mine=true&learnerId=123&formId=abc&page=1&pageSize=20
+        [HttpGet("responses")]
+        [Authorize(Policy = "RequireLearnerOrAdmin")]
+        public async Task<IActionResult> List(
+            [FromQuery] bool mine = false,
+            [FromQuery] long? learnerId = null,
+            [FromQuery] string? formId = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
         {
-            var (items, total) = await _responseService.ListAsync(formId);
-            return Ok(new { total, items });
+            // Learner cannot query others
+            if (!IsAdmin)
+            {
+                learnerId = CurrentUserIdLong;
+                mine = true;
+            }
+
+            var (items, total) = await _responses.ListAsync(
+                learnerId: learnerId,
+                formId: formId,
+                page: page,
+                pageSize: pageSize);
+
+            return Ok(new { total, items, page, pageSize });
         }
     }
 }
-

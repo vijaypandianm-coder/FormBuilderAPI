@@ -2,57 +2,65 @@ using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;                 // ✅ for Swagger security
+using Microsoft.OpenApi.Models;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ===============================
-// 1) MySQL (Users + Responses)
-// ===============================
+// =======================================
+// 1) MySQL (EF Core) – Users & Responses
+// =======================================
 builder.Services.AddDbContext<SqlDbContext>(opt =>
     opt.UseMySql(
         builder.Configuration.GetConnectionString("MySqlConnection"),
         Microsoft.EntityFrameworkCore.ServerVersion.AutoDetect(
             builder.Configuration.GetConnectionString("MySqlConnection"))
-    ));
+    )
+);
 
-// ===============================
-// 2) MongoDB (Form Layouts only)
-// ===============================
+// =======================================
+// 2) MongoDB – Form Layouts
+// =======================================
 builder.Services.Configure<MongoDbSettings>(builder.Configuration.GetSection("MongoSettings"));
-builder.Services.AddSingleton<MongoDbContext>();   // used by FormService
+builder.Services.AddSingleton<MongoDbContext>(); // singleton client/context for forms
 
-// ===============================
-// 3) App Services
-// ===============================
+// =======================================
+// 3) App Services (DI)
+// =======================================
 builder.Services.AddScoped<AuthService>();       // SQL users
 builder.Services.AddScoped<FormService>();       // Mongo forms
-builder.Services.AddScoped<ResponseService>();   // SQL responses
-builder.Services.AddScoped<AuditService>();      // SQL audit (optional)
+builder.Services.AddScoped<ResponseService>();   // SQL form responses
+builder.Services.AddScoped<AuditService>();      // SQL audit logs (optional)
 
-// ✅ Seeder (creates a default Admin in SQL if missing)
-builder.Services.AddScoped<DatabaseSeeder>();
-
+// MVC & Swagger plumbing
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddEndpointsApiExplorer();      // <- required for Swagger
 
-// ===============================
-// 4) Swagger + JWT
-// ===============================
+// =======================================
+// 4) Swagger + JWT "Authorize" button
+// =======================================
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new() { Title = "FormBuilder API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "FormBuilder API",
+        Version = "v1",
+        Description = "Forms in MongoDB, Users/Responses in MySQL"
+    });
+
+    // JWT Bearer definition
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
+        Description = "JWT Authorization header using the Bearer scheme.\n\nEnter: Bearer {your_token}",
         Name = "Authorization",
+        In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
         Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Enter 'Bearer' [space] and then your token.\n\nExample: Bearer eyJhbGciOi..."
+        BearerFormat = "JWT"
     });
+
+    // Require token for secured endpoints
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -69,49 +77,59 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// ===============================
-// 5) JWT Auth
-// ===============================
-var key = Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!);
+// =======================================
+// 5) JWT Authentication & Authorization
+// =======================================
+var jwtKey = builder.Configuration["Jwt:Key"]!;
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o =>
+builder.Services
+    .AddAuthentication(options =>
     {
-        o.TokenValidationParameters = new TokenValidationParameters
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
+            ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(key)
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization(opts =>
 {
+    // Admin-only policy
     opts.AddPolicy("RequireAdmin", p => p.RequireRole("Admin"));
+    // Learner OR Admin can access
     opts.AddPolicy("RequireLearnerOrAdmin", p => p.RequireRole("Admin", "Learner"));
 });
 
+// =======================================
+// 6) Build & Pipeline
+// =======================================
 var app = builder.Build();
-
-// ===============================
-// 6) Seed default Admin in SQL
-// ===============================
-using (var scope = app.Services.CreateScope())
-{
-    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
-    await seeder.SeedAdminAsync(); // uses appsettings: Seed:AdminEmail/Password if provided
-}
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.DocumentTitle = "FormBuilder API Docs";
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "FormBuilder API v1");
+    });
 }
 
-app.UseAuthentication();
+app.UseHttpsRedirection();
+
+app.UseAuthentication();   // <- must be before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllers();

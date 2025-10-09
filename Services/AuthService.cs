@@ -21,7 +21,7 @@ namespace FormBuilderAPI.Services
             _config = config;
         }
 
-        // ✅ Register new user
+        // ✅ Register new learner (not admin)
         public async Task<User> RegisterAsync(string username, string email, string password, string role = "Learner")
         {
             var exists = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
@@ -43,9 +43,24 @@ namespace FormBuilderAPI.Services
             return newUser;
         }
 
-        // ✅ Login
+        // ✅ Login (Admin bypasses DB)
         public async Task<string?> LoginAsync(string email, string password)
         {
+            // --- Hardcoded Admin ---
+            if (email == "admin@example.com" && password == "Admin@123")
+            {
+                var adminUser = new User
+                {
+                    Id = 0, // not from DB
+                    Username = "Admin",
+                    Email = email,
+                    Role = "Admin",
+                    IsActive = true
+                };
+                return GenerateJwtToken(adminUser);
+            }
+
+            // --- Normal Learner login from DB ---
             var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (user == null || !user.IsActive)
                 return null;
@@ -64,6 +79,7 @@ namespace FormBuilderAPI.Services
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), 
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role)
             };

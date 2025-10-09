@@ -7,37 +7,46 @@ namespace FormBuilderAPI.Services
     public class ResponseService
     {
         private readonly SqlDbContext _db;
-        public ResponseService(SqlDbContext db) { _db = db; }
+        public ResponseService(SqlDbContext db) => _db = db;
 
-        /// <summary>
-        /// Persists a submission with its answers.
-        /// </summary>
         public async Task<FormResponse> SaveAsync(FormResponse response, List<FormResponseAnswer> answers)
         {
             _db.FormResponses.Add(response);
-            await _db.SaveChangesAsync(); // generates response.Id (INT)
+            await _db.SaveChangesAsync();
 
-            foreach (var ans in answers)
+            foreach (var a in answers)
             {
-                ans.ResponseId = response.Id; // must be INT and match parent
-                _db.FormResponseAnswers.Add(ans);
+                a.ResponseId = response.Id;
+                _db.FormResponseAnswers.Add(a);
             }
-
             await _db.SaveChangesAsync();
             return response;
         }
 
-        /// <summary>
-        /// Returns all responses for a given Mongo form id (string).
-        /// </summary>
-        public async Task<(List<FormResponse> Items, int Total)> ListAsync(string formId)
+        public async Task<(List<FormResponse> Items, int Total)> ListAsync(
+            long? learnerId,
+            string? formId,
+            int page,
+            int pageSize)
         {
-            var query = _db.FormResponses
-                           .Include(r => r.Answers)
-                           .Where(r => r.FormId == formId);
+            var q = _db.FormResponses
+                .Include(r => r.Answers)
+                .AsQueryable();
 
-            var items = await query.ToListAsync();
-            return (items, items.Count);
+            if (learnerId is not null)
+                q = q.Where(r => r.UserId == learnerId.Value);
+
+            if (!string.IsNullOrWhiteSpace(formId))
+                q = q.Where(r => r.FormId == formId);
+
+            var total = await q.CountAsync();
+            var items = await q
+                .OrderByDescending(r => r.SubmittedAt)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return (items, total);
         }
     }
 }

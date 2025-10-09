@@ -3,40 +3,40 @@ using FormBuilderAPI.Models.SqlModels;
 
 namespace FormBuilderAPI.Data
 {
-    public class SqlDbContext : DbContext
+  public class SqlDbContext : DbContext
+  {
+    public SqlDbContext(DbContextOptions<SqlDbContext> options) : base(options) { }
+
+    public DbSet<User> Users => Set<User>();
+    public DbSet<FormResponse> FormResponses => Set<FormResponse>();
+    public DbSet<FormResponseAnswer> FormResponseAnswers => Set<FormResponseAnswer>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    protected override void OnModelCreating(ModelBuilder mb)
     {
-        public SqlDbContext(DbContextOptions<SqlDbContext> options) : base(options) { }
+      mb.Entity<User>().ToTable("users");               // ensure lowercase table
+      mb.Entity<FormResponse>().ToTable("formresponses");
+      mb.Entity<FormResponseAnswer>().ToTable("formresponseanswers");
+      mb.Entity<AuditLog>().ToTable("auditlogs");
 
-        public DbSet<User> Users => Set<User>();
-        public DbSet<FormResponse> FormResponses => Set<FormResponse>();
-        public DbSet<FormResponseAnswer> FormResponseAnswers => Set<FormResponseAnswer>();
-        public DbSet<AuditLog> AuditLogs => Set<AuditLog>(); // keep if you already added AuditLog
+      // FormResponse → Answers (cascade)
+      mb.Entity<FormResponse>()
+        .HasMany(r => r.Answers)
+        .WithOne(a => a.FormResponse!)
+        .HasForeignKey(a => a.ResponseId)
+        .OnDelete(DeleteBehavior.Cascade);
 
-        protected override void OnModelCreating(ModelBuilder mb)
-        {
-            base.OnModelCreating(mb);
+      // FormResponse → User (restrict delete)
+      mb.Entity<FormResponse>()
+        .HasOne(r => r.User)
+        .WithMany()
+        .HasForeignKey(r => r.UserId)
+        .OnDelete(DeleteBehavior.Restrict);
 
-            // Users
-            mb.Entity<User>()
-              .HasIndex(u => u.Email)
-              .IsUnique();
-
-            // FormResponses
-            mb.Entity<FormResponse>()
-              .HasMany(r => r.Answers)
-              .WithOne(a => a.FormResponse!)
-              .HasForeignKey(a => a.ResponseId)
-              .OnDelete(DeleteBehavior.Cascade);
-
-            mb.Entity<FormResponse>()
-              .HasIndex(r => new { r.FormId, r.SubmittedAt });
-
-            // Answers
-            mb.Entity<FormResponseAnswer>()
-              .HasIndex(a => a.FieldId);
-
-            // If you have AuditLog, keep its indexes here as before
-            // mb.Entity<AuditLog>().HasIndex(l => l.ActorRole);
-        }
+      // Helpful indexes
+      mb.Entity<FormResponse>().HasIndex(r => new { r.FormId, r.SubmittedAt });
+      mb.Entity<FormResponseAnswer>().HasIndex(a => a.FieldId);
+      mb.Entity<AuditLog>().HasIndex(l => l.ActorRole);
     }
+  }
 }

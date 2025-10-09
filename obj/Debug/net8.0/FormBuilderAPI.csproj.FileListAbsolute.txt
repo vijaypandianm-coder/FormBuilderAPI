@@ -103,6 +103,7 @@ C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\FormBuilderAPI.Ass
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\FormBuilderAPI.csproj.CoreCompileInputs.cache
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\FormBuilderAPI.MvcApplicationPartsAssemblyInfo.cs
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\FormBuilderAPI.MvcApplicationPartsAssemblyInfo.cache
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\FormBuilderAPI.sourcelink.json
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\staticwebassets.build.json
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\staticwebassets.development.json
 C:\Users\vijaypandian.m_dispr\FormBuilderAPI\obj\Debug\net8.0\staticwebassets\msbuild.FormBuilderAPI.Microsoft.AspNetCore.StaticWebAssets.props

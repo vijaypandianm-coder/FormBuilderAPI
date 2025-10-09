@@ -7,20 +7,18 @@ namespace FormBuilderAPI.Models.SqlModels
     public class FormResponse
     {
         [Key]
-        public long Id { get; set; }  // BIGINT AUTO_INCREMENT
+        public long Id { get; set; }                 // BIGINT
 
-        // Mongo Form _id (string)
         [Required]
-        public string FormId { get; set; } = default!;
+        public string FormId { get; set; } = default!; // Mongo _id
 
         [Required]
         public DateTime SubmittedAt { get; set; } = DateTime.UtcNow;
 
-        // FK -> users.Id
         [ForeignKey(nameof(User))]
-        public long UserId { get; set; }
+        public long UserId { get; set; }            // FK -> users.Id
 
-        public User? User { get; set; }
+        public User? User { get; set; }             // nav
 
         public List<FormResponseAnswer> Answers { get; set; } = new();
     }

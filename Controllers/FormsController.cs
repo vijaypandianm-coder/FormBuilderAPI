@@ -1,4 +1,3 @@
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
@@ -35,31 +34,32 @@ namespace FormBuilderAPI.Controllers
         public async Task<IActionResult> Update(string id, [FromBody] Form form)
         {
             var updated = await _forms.UpdateFormAsync(id, form);
-            return updated is null ? NotFound() : Ok(updated);
+            return updated is null ? NotFound(new { message = "Form not found" }) : Ok(updated);
         }
 
-        // Delete
+        // Delete (form + responses in SQL)
         [HttpDelete("{id}")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Delete(string id)
         {
-            var ok = await _forms.DeleteFormAsync(id);
-            return ok ? NoContent() : NotFound();
+            var ok = await _forms.DeleteFormAndResponsesAsync(id);
+            return ok ? Ok(new { message = "Form and its responses deleted" }) 
+                      : NotFound(new { message = "Form not found" });
         }
 
-        // Publish / Draft
+        // Publish/Draft via same endpoint
         [HttpPatch("{id}/status")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> SetStatus(string id, [FromBody] SetStatusRequest req)
         {
             if (req is null || string.IsNullOrWhiteSpace(req.Status))
-                return BadRequest("Status is required (Published|Draft).");
+                return BadRequest(new { message = "Status is required (Published|Draft)." });
 
             var updated = await _forms.SetStatusAsync(id, req.Status);
-            return updated is null ? NotFound() : Ok(updated);
+            return updated is null ? NotFound(new { message = "Form not found" }) : Ok(updated);
         }
 
-        // Get one (+ preview)
+        // Get one (+ preview for admins)
         // /api/forms/{id}?mode=preview
         [HttpGet("{id}")]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
@@ -67,7 +67,7 @@ namespace FormBuilderAPI.Controllers
         {
             var allowPreview = IsAdmin && string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase);
             var form = await _forms.GetFormByIdAsync(id, allowPreview, IsAdmin);
-            return form is null ? NotFound() : Ok(form);
+            return form is null ? NotFound(new { message = "Form not found or not visible" }) : Ok(form);
         }
 
         // List with filters

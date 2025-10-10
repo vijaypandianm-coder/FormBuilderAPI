@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization;
 
 namespace FormBuilderAPI.Models.SqlModels
 {
@@ -12,7 +13,8 @@ namespace FormBuilderAPI.Models.SqlModels
         // FK -> formresponses.Id
         [ForeignKey(nameof(FormResponse))]
         public long ResponseId { get; set; }
-
+        
+        [JsonIgnore]
         public FormResponse? FormResponse { get; set; }
 
         // Field's identifier from the Mongo layout (e.g., "fullName", "q1", etc.)

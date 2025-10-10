@@ -24,6 +24,9 @@ namespace FormBuilderAPI.Services
         // ✅ Register new learner (not admin)
         public async Task<User> RegisterAsync(string username, string email, string password, string role = "Learner")
         {
+             if (!string.Equals(role, "Learner", StringComparison.OrdinalIgnoreCase))
+                throw new Exception("Only Learner accounts can be registered via API");
+
             var exists = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
             if (exists != null)
                 throw new Exception("User already exists");

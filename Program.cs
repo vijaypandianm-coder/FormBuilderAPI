@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<SqlDbContext>(opt =>
     opt.UseMySql(
         builder.Configuration.GetConnectionString("MySqlConnection"),
-        Microsoft.EntityFrameworkCore.ServerVersion.AutoDetect(
-            builder.Configuration.GetConnectionString("MySqlConnection"))
-    )
-);
+        ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("MySqlConnection"))
+    ));
 
 // =======================================
 // 2) MongoDB – Form Layouts
@@ -33,9 +32,8 @@ builder.Services.AddScoped<FormService>();       // Mongo forms
 builder.Services.AddScoped<ResponseService>();   // SQL form responses
 builder.Services.AddScoped<AuditService>();      // SQL audit logs (optional)
 
-// MVC & Swagger plumbing
 builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();      // <- required for Swagger
+builder.Services.AddEndpointsApiExplorer();
 
 // =======================================
 // 4) Swagger + JWT "Authorize" button
@@ -49,10 +47,9 @@ builder.Services.AddSwaggerGen(c =>
         Description = "Forms in MongoDB, Users/Responses in MySQL"
     });
 
-    // JWT Bearer definition
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme.\n\nEnter: Bearer {your_token}",
+        Description = "JWT Authorization header using the Bearer scheme.\n\nEnter: **Bearer {your_token}**",
         Name = "Authorization",
         In = ParameterLocation.Header,
         Type = SecuritySchemeType.ApiKey,
@@ -60,7 +57,6 @@ builder.Services.AddSwaggerGen(c =>
         BearerFormat = "JWT"
     });
 
-    // Require token for secured endpoints
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
@@ -68,8 +64,8 @@ builder.Services.AddSwaggerGen(c =>
             {
                 Reference = new OpenApiReference
                 {
-                    Type = ReferenceType.SecurityScheme,
-                    Id = "Bearer"
+                    Type  = ReferenceType.SecurityScheme,
+                    Id    = "Bearer"
                 }
             },
             Array.Empty<string>()
@@ -80,56 +76,89 @@ builder.Services.AddSwaggerGen(c =>
 // =======================================
 // 5) JWT Authentication & Authorization
 // =======================================
-var jwtKey = builder.Configuration["Jwt:Key"]!;
-var jwtIssuer = builder.Configuration["Jwt:Issuer"];
-var jwtAudience = builder.Configuration["Jwt:Audience"];
+var jwtKey     = builder.Configuration["Jwt:Key"]!;
+var jwtIssuer  = builder.Configuration["Jwt:Issuer"];
+var jwtAudience= builder.Configuration["Jwt:Audience"];
 
 builder.Services
     .AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
     })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
+            ValidateIssuer           = true,
+            ValidateAudience         = true,
+            ValidateLifetime         = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtIssuer,
-            ValidAudience = jwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidIssuer              = jwtIssuer,
+            ValidAudience            = jwtAudience,
+            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization(opts =>
 {
-    // Admin-only policy
-    opts.AddPolicy("RequireAdmin", p => p.RequireRole("Admin"));
-    // Learner OR Admin can access
+    opts.AddPolicy("RequireAdmin",          p => p.RequireRole("Admin"));
     opts.AddPolicy("RequireLearnerOrAdmin", p => p.RequireRole("Admin", "Learner"));
 });
 
-// =======================================
-// 6) Build & Pipeline
-// =======================================
 var app = builder.Build();
 
+// =======================================
+// 6) Global, single-line JSON error handling
+// =======================================
+// Converts *any* unhandled exception into: { "message": "..." }
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        // choose a sensible status (you can branch on exception types if you like)
+        context.Response.StatusCode  = (int)HttpStatusCode.BadRequest;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { message = ex.Message });
+    }
+});
+
+// Also return tidy JSON for common status codes (401/403/404 etc.)
+app.UseStatusCodePages(async statusCtx =>
+{
+    var resp = statusCtx.HttpContext.Response;
+    resp.ContentType = "application/json";
+    await resp.WriteAsJsonAsync(new
+    {
+        message = resp.StatusCode switch
+        {
+            401 => "Unauthorized",
+            403 => "Forbidden",
+            404 => "Not Found",
+            _   => $"HTTP {resp.StatusCode}"
+        }
+    });
+});
+
+// =======================================
+// 7) Pipeline
+// =======================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.DocumentTitle = "FormBuilder API Docs";
+        c.DocumentTitle  = "FormBuilder API Docs";
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "FormBuilder API v1");
     });
 }
 
 app.UseHttpsRedirection();
-
-app.UseAuthentication();   // <- must be before UseAuthorization
+app.UseAuthentication();   // must be before UseAuthorization
 app.UseAuthorization();
 
 app.MapControllers();

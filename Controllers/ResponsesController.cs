@@ -19,12 +19,13 @@ namespace FormBuilderAPI.Controllers
                 User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
                 User.FindFirst("sub")?.Value, out var id) ? id : null;
 
-        // Submit
+        // Submit a response
         [HttpPost("forms/{formId}/responses")]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
         public async Task<IActionResult> Submit(string formId, [FromBody] List<FormResponseAnswer> answers)
         {
-            if (CurrentUserIdLong is null) return Unauthorized("Invalid token.");
+            if (CurrentUserIdLong is null)
+                return Unauthorized(new { message = "Invalid token." });
 
             var response = new FormResponse
             {
@@ -34,11 +35,26 @@ namespace FormBuilderAPI.Controllers
             };
 
             var saved = await _responses.SaveAsync(response, answers);
-            return Ok(saved);
+
+            // return a flat DTO to avoid cycles & over-posting
+            var dto = new ResponseDto
+            {
+                Id = saved.Id,
+                FormId = saved.FormId,
+                UserId = saved.UserId,
+                SubmittedAt = saved.SubmittedAt,
+                Answers = answers.Select(a => new AnswerDto
+                {
+                    FieldId = a.FieldId,
+                    AnswerValue = a.AnswerValue
+                }).ToList()
+            };
+
+            return Ok(dto);
         }
 
-        // List (admin & learners)
-        // /api/responses?mine=true&learnerId=123&formId=abc&page=1&pageSize=20
+        // List responses (admin can filter; learner only sees their own)
+        // GET /api/responses?mine=true&learnerId=123&formId=abc&page=1&pageSize=20
         [HttpGet("responses")]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
         public async Task<IActionResult> List(
@@ -48,7 +64,6 @@ namespace FormBuilderAPI.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 20)
         {
-            // Learner cannot query others
             if (!IsAdmin)
             {
                 learnerId = CurrentUserIdLong;
@@ -61,7 +76,37 @@ namespace FormBuilderAPI.Controllers
                 page: page,
                 pageSize: pageSize);
 
-            return Ok(new { total, items, page, pageSize });
+            // project to DTOs (don’t return EF entities)
+            var list = items.Select(r => new ResponseDto
+            {
+                Id = r.Id,
+                FormId = r.FormId,
+                UserId = r.UserId,
+                SubmittedAt = r.SubmittedAt,
+                Answers = r.Answers.Select(a => new AnswerDto
+                {
+                    FieldId = a.FieldId,
+                    AnswerValue = a.AnswerValue
+                }).ToList()
+            }).ToList();
+
+            return Ok(new { total, page, pageSize, items = list });
+        }
+
+        // DTOs
+        public class ResponseDto
+        {
+            public long Id { get; set; }
+            public string FormId { get; set; } = default!;
+            public long UserId { get; set; }
+            public DateTime SubmittedAt { get; set; }
+            public List<AnswerDto> Answers { get; set; } = new();
+        }
+
+        public class AnswerDto
+        {
+            public string FieldId { get; set; } = default!;
+            public string? AnswerValue { get; set; }
         }
     }
 }

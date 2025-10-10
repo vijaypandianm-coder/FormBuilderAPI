@@ -1,14 +1,23 @@
 using MongoDB.Driver;
+using Microsoft.EntityFrameworkCore;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Models.MongoModels;
+using FormBuilderAPI.Models.SqlModels;
 
 namespace FormBuilderAPI.Services
 {
     public class FormService
     {
         private readonly MongoDbContext _mongo;
-        public FormService(MongoDbContext mongo) => _mongo = mongo;
+        private readonly SqlDbContext _sql;
 
+        public FormService(MongoDbContext mongo, SqlDbContext sql)
+        {
+            _mongo = mongo;
+            _sql = sql;
+        }
+
+        // CREATE
         public async Task<Form> CreateFormAsync(Form form)
         {
             form.CreatedAt = DateTime.UtcNow;
@@ -18,22 +27,54 @@ namespace FormBuilderAPI.Services
             return form;
         }
 
+        // UPDATE (full replace)
         public async Task<Form?> UpdateFormAsync(string id, Form updated)
         {
+            updated.Id = id; // ensure id is preserved on replace
             updated.UpdatedAt = DateTime.UtcNow;
+
             var result = await _mongo.Forms.FindOneAndReplaceAsync(
                 Builders<Form>.Filter.Eq(f => f.Id, id),
                 updated,
                 new FindOneAndReplaceOptions<Form> { ReturnDocument = ReturnDocument.After });
+
             return result;
         }
 
+        // DELETE (form only)
         public async Task<bool> DeleteFormAsync(string id)
         {
             var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == id);
             return res.DeletedCount > 0;
         }
 
+        // DELETE (form + SQL responses)
+        public async Task<bool> DeleteFormAndResponsesAsync(string formId)
+        {
+            // 1) Delete SQL responses & answers
+            // Pull minimal set: Ids + answers
+            var responses = await _sql.FormResponses
+                .Where(r => r.FormId == formId)
+                .Include(r => r.Answers)
+                .ToListAsync();
+
+            if (responses.Count > 0)
+            {
+                // Remove children then parents
+                var allAnswers = responses.SelectMany(r => r.Answers).ToList();
+                if (allAnswers.Count > 0)
+                    _sql.FormResponseAnswers.RemoveRange(allAnswers);
+
+                _sql.FormResponses.RemoveRange(responses);
+                await _sql.SaveChangesAsync();
+            }
+
+            // 2) Delete Mongo form
+            var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == formId);
+            return res.DeletedCount > 0;
+        }
+
+        // STATUS
         public async Task<Form?> SetStatusAsync(string id, string status)
         {
             status = (status?.Equals("Published", StringComparison.OrdinalIgnoreCase) ?? false)
@@ -50,20 +91,20 @@ namespace FormBuilderAPI.Services
                 new FindOneAndUpdateOptions<Form> { ReturnDocument = ReturnDocument.After });
         }
 
-        // Get one with visibility rules
+        // GET (with preview rules)
         public async Task<Form?> GetFormByIdAsync(string id, bool allowPreview, bool isAdmin)
         {
             var f = await _mongo.Forms.Find(x => x.Id == id).FirstOrDefaultAsync();
             if (f is null) return null;
 
-            // Draft visibility
+            // Draft hidden from non-admins unless preview=true for admin
             if (f.Status == "Draft" && !(allowPreview || isAdmin))
                 return null;
 
             return f;
         }
 
-        // List with filters
+        // LIST (filters + visibility)
         public async Task<(List<Form> Items, long Total)> ListAsync(
             string? status,
             string? createdBy,
@@ -73,7 +114,6 @@ namespace FormBuilderAPI.Services
         {
             var filter = Builders<Form>.Filter.Empty;
 
-            // Non-admins: default to Published only
             if (!isAdmin)
             {
                 filter &= Builders<Form>.Filter.Eq(f => f.Status, "Published");

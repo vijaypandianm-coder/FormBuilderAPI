@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using FormBuilderAPI.Data;
-using Microsoft.EntityFrameworkCore;
+using FormBuilderAPI.Application.Interfaces;
 
 namespace FormBuilderAPI.Controllers
 {
@@ -10,26 +9,18 @@ namespace FormBuilderAPI.Controllers
     [Authorize(Policy = "RequireAdmin")]
     public class AdminController : ControllerBase
     {
-        private readonly SqlDbContext _db;
-        public AdminController(SqlDbContext db) => _db = db;
+        private readonly IFormAppService _app;
+        public AdminController(IFormAppService app) => _app = app;
 
-        [HttpGet("responses/{formId}")]
-        public async Task<IActionResult> GetFormResponses(string formId)
+        // Simple admin listing, matches IFormAppService.ListAsync signature
+        [HttpGet("forms")]
+        public async Task<IActionResult> ListForms(
+            [FromQuery] string? status = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
         {
-            var responses = await _db.FormResponses
-                .Include(r => r.Answers)
-                .Where(r => r.FormId == formId)
-                .ToListAsync();
-
-            var result = responses.Select(r => new
-            {
-                r.Id,
-                r.UserId,
-                r.SubmittedAt,
-                Answers = r.Answers.Select(a => new { a.FieldId, a.AnswerValue })
-            });
-
-            return Ok(result);
+            var (items, total) = await _app.ListAsync(status, isAdmin: true, page, pageSize);
+            return Ok(new { total, page, pageSize, items });
         }
     }
 }

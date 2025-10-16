@@ -1,69 +1,50 @@
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using MongoDB.Bson.Serialization.IdGenerators;
 
 namespace FormBuilderAPI.Models.MongoModels
 {
+    [BsonIgnoreExtraElements]
     public class Form
     {
-        [BsonId] 
+        // Map string <-> ObjectId and auto-generate on insert
+        [BsonId(IdGenerator = typeof(StringObjectIdGenerator))]
         [BsonRepresentation(BsonType.ObjectId)]
-        public string Id { get; set; } = string.Empty;
+        public string Id { get; set; } = default!;
 
-        [BsonElement("title")]
-        public string Title { get; set; } = string.Empty;
-
-        // Layout remains the same
-        [BsonElement("layout")]
-        public List<FormSection> Layout { get; set; } = new();
-
-        // New publishing fields
-        [BsonElement("status")]
-        public string Status { get; set; } = "Draft"; // Draft | Published
-
-        [BsonElement("createdBy")]
+        public int? FormKey { get; set; }
+        public string Title { get; set; } = default!;
+        public string? Description { get; set; }
+        public string Status { get; set; } = "Draft";
+        public string Access { get; set; } = "Open";
         public string CreatedBy { get; set; } = "system";
-
-        [BsonElement("publishedAt")]
         public DateTime? PublishedAt { get; set; }
-
-        [BsonElement("createdAt")]
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-        [BsonElement("updatedAt")]
+        public DateTime CreatedAt { get; set; }
         public DateTime? UpdatedAt { get; set; }
+
+        public List<FormSection> Layout { get; set; } = new();
     }
 
     public class FormSection
     {
-        [BsonElement("sectionId")]
-        public string SectionId { get; set; } = Guid.NewGuid().ToString();
-
-        [BsonElement("title")]
-        public string Title { get; set; } = string.Empty;
-
-        [BsonElement("description")]
+        public string SectionId { get; set; } = default!;
+        public string Title { get; set; } = default!;
         public string? Description { get; set; }
-
-        [BsonElement("fields")]
         public List<FormField> Fields { get; set; } = new();
     }
 
     public class FormField
     {
-        [BsonElement("fieldId")]
-        public string FieldId { get; set; } = Guid.NewGuid().ToString();
-
-        [BsonElement("label")]
-        public string Label { get; set; } = string.Empty;
-
-        // shortText,longText,number,dropdown,date,file
-        [BsonElement("type")]
-        public string Type { get; set; } = "shortText";
-
-        [BsonElement("isRequired")]
+        public string FieldId { get; set; } = default!;
+        public string Label { get; set; } = default!;
+        public string Type { get; set; } = default!;
         public bool IsRequired { get; set; }
+        public List<FieldOption>? Options { get; set; }   // for choice types only
+    }
 
-        [BsonElement("options")]
-        public List<string>? Options { get; set; }
+    public class FieldOption
+    {
+        public string Id { get; set; } = default!;  // stringified ObjectId GUIDs we generate
+        public string Text { get; set; } = default!;
     }
 }

@@ -1,8 +1,9 @@
+// Controllers/FormsController.cs
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
-using FormBuilderAPI.Models.MongoModels;
-using FormBuilderAPI.Services;
+using FormBuilderAPI.Application.Interfaces;
+using FormBuilderAPI.DTOs;
 
 namespace FormBuilderAPI.Controllers
 {
@@ -10,90 +11,145 @@ namespace FormBuilderAPI.Controllers
     [Route("api/[controller]")]
     public class FormsController : ControllerBase
     {
-        private readonly FormService _forms;
-        public FormsController(FormService forms) => _forms = forms;
+        private readonly IFormAppService _app;
+
+        public FormsController(IFormAppService app)
+        {
+            _app = app;
+        }
 
         private bool IsAdmin => User.IsInRole("Admin");
         private string? CurrentUserId =>
             User.FindFirst(ClaimTypes.NameIdentifier)?.Value ??
             User.FindFirst("sub")?.Value;
 
-        // Create
-        [HttpPost]
+        // -------- META --------
+        // POST /api/forms/meta
+        [HttpPost("meta")]
         [Authorize(Policy = "RequireAdmin")]
-        public async Task<IActionResult> Create([FromBody] Form form)
+        public async Task<IActionResult> CreateMeta([FromBody] FormMetaDto meta)
         {
-            form.CreatedBy = CurrentUserId ?? "system";
-            var created = await _forms.CreateFormAsync(form);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            var dto = await _app.CreateMetaAsync(CurrentUserId ?? "system", meta);
+            // return Location header to GET by key
+            return CreatedAtAction(nameof(GetByKey), new { formKey = dto.FormKey!.Value }, dto);
+        }
+        /// <summary>Update title/description (Draft only)</summary>
+        [HttpPut("{formKey:int}/meta")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> UpdateMeta(int formKey, [FromBody] FormMetaDto meta)
+        {
+            var dto = await _app.UpdateMetaAsync(formKey, meta);
+            return Ok(dto);
         }
 
-        // Update
-        [HttpPut("{id}")]
+
+
+        // -------- LAYOUT --------
+        // POST /api/forms/{formKey}/layout (append)
+        [HttpPost("{formKey:int}/layout")]
         [Authorize(Policy = "RequireAdmin")]
-        public async Task<IActionResult> Update(string id, [FromBody] Form form)
+        public async Task<IActionResult> AddLayout(int formKey, [FromBody] FormLayoutDto layout)
         {
-            var updated = await _forms.UpdateFormAsync(id, form);
-            return updated is null ? NotFound(new { message = "Form not found" }) : Ok(updated);
+            var dto = await _app.AddLayoutAsync(formKey, layout);
+            return Ok(dto);
         }
 
-        // Delete (form + responses in SQL)
-        [HttpDelete("{id}")]
+        // PUT /api/forms/{formKey}/layout (replace)
+        [HttpPut("{formKey:int}/layout")]
         [Authorize(Policy = "RequireAdmin")]
-        public async Task<IActionResult> Delete(string id)
+        public async Task<IActionResult> SetLayout(int formKey, [FromBody] FormLayoutDto layout)
         {
-            var ok = await _forms.DeleteFormAndResponsesAsync(id);
-            return ok ? Ok(new { message = "Form and its responses deleted" }) 
-                      : NotFound(new { message = "Form not found" });
+            var dto = await _app.SetLayoutAsync(formKey, layout);
+            return Ok(dto);
         }
 
-        // Publish/Draft via same endpoint
-        [HttpPatch("{id}/status")]
-        [Authorize(Policy = "RequireAdmin")]
-        public async Task<IActionResult> SetStatus(string id, [FromBody] SetStatusRequest req)
-        {
-            if (req is null || string.IsNullOrWhiteSpace(req.Status))
-                return BadRequest(new { message = "Status is required (Published|Draft)." });
+        // (optional) single-field upsert helper
+        // POST /api/forms/{formKey}/field
+       // [HttpPost("{formKey:int}/field")]
+        //[Authorize(Policy = "RequireAdmin")]
+        //public async Task<IActionResult> SetField(int formKey, [FromBody] SingleFieldDto dto)
+        //{
+          //  var result = await _app.SetFieldAsync(formKey, dto);
+            //return Ok(result);
+        //}
 
-            var updated = await _forms.SetStatusAsync(id, req.Status);
-            return updated is null ? NotFound(new { message = "Form not found" }) : Ok(updated);
+        // -------- STATUS / ACCESS --------
+        [HttpPatch("{formKey:int}/status")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> SetStatus(int formKey, [FromBody] StatusPatchDto body)
+        {
+            if (body is null || string.IsNullOrWhiteSpace(body.Status))
+                return BadRequest(new { message = "status is required" });
+            var dto = await _app.SetStatusAsync(formKey, body.Status);
+            return Ok(dto);
         }
 
-        // Get one (+ preview for admins)
-        // /api/forms/{id}?mode=preview
-        [HttpGet("{id}")]
+        [HttpPatch("{formKey:int}/access")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> SetAccess(int formKey, [FromBody] AccessPatchDto body)
+        {
+            if (body is null || string.IsNullOrWhiteSpace(body.Access))
+                return BadRequest(new { message = "access is required" });
+            var dto = await _app.SetAccessAsync(formKey, body.Access);
+            return Ok(dto);
+        }
+        /// <summary>Delete a form</summary>
+        [HttpDelete("{formKey:int}")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> Delete(int formKey)
+        {
+            await _app.DeleteAsync(formKey);
+            return NoContent();
+        }
+
+        // -------- READ --------
+        [HttpGet("{formKey:int}")]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
-        public async Task<IActionResult> GetById(string id, [FromQuery] string? mode = null)
+        public async Task<IActionResult> GetByKey(int formKey, [FromQuery] string? mode = null)
         {
             var allowPreview = IsAdmin && string.Equals(mode, "preview", StringComparison.OrdinalIgnoreCase);
-            var form = await _forms.GetFormByIdAsync(id, allowPreview, IsAdmin);
-            return form is null ? NotFound(new { message = "Form not found or not visible" }) : Ok(form);
+            var dto = await _app.GetByKeyAsync(formKey, allowPreview, IsAdmin);
+            return Ok(dto);
         }
 
-        // List with filters
-        // /api/forms?status=Published|Draft|All&mine=true&page=1&pageSize=20
-        [HttpGet]
+        /*[HttpGet]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
-        public async Task<IActionResult> List(
-            [FromQuery] string? status = null,
-            [FromQuery] bool mine = false,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> List([FromQuery] string? status = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
         {
-            var createdBy = (IsAdmin && mine) ? CurrentUserId : null;
-            var (items, total) = await _forms.ListAsync(
-                status: status,
-                createdBy: createdBy,
-                isAdmin: IsAdmin,
-                page: page,
-                pageSize: pageSize);
+            var (items, total) = await _app.ListAsync(status, IsAdmin, page, pageSize);
+            return Ok(new { total, page, pageSize, items });
+        }*/
+        // -------- ASSIGNMENTS --------
 
-            return Ok(new { total, items, page, pageSize });
+        /// <summary>Assign a user to a form</summary>
+        [HttpPost("{formKey:int}/assignments")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> Assign(int formKey, [FromBody] AssignRequest body)
+        {
+            await _app.AssignUserAsync(formKey, body.UserId);
+            return NoContent();
         }
 
-        public class SetStatusRequest
+        /// <summary>Unassign a user from a form</summary>
+        [HttpDelete("{formKey:int}/assignments/{userId:long}")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> Unassign(int formKey, long userId)
         {
-            public string Status { get; set; } = "Draft";
+            await _app.UnassignUserAsync(formKey, userId);
+            return NoContent();
         }
+
+        /// <summary>List assignees for a form</summary>
+        [HttpGet("{formKey:int}/assignments")]
+        [Authorize(Policy = "RequireAdmin")]
+        public async Task<IActionResult> ListAssignees(int formKey)
+        {
+            var items = await _app.ListAssigneesAsync(formKey);
+            return Ok(items);
+        }
+    }
+    public class AssignRequest
+    {
+        public long UserId { get; set; }
     }
 }

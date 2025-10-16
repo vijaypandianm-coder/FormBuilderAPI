@@ -4,6 +4,7 @@ using FormBuilderAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FormBuilderAPI.Migrations
 {
     [DbContext(typeof(SqlDbContext))]
-    partial class SqlDbContextModelSnapshot : ModelSnapshot
+    [Migration("20251010082516_AddFormAssignments_Fix")]
+    partial class AddFormAssignments_Fix
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -130,25 +133,14 @@ namespace FormBuilderAPI.Migrations
                         .IsRequired()
                         .HasColumnType("varchar(255)");
 
-                    b.Property<string>("FormId")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
-
                     b.Property<long>("ResponseId")
-                        .HasColumnType("bigint");
-
-                    b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
                     b.HasIndex("FieldId");
 
-                    b.HasIndex("FormId");
-
                     b.HasIndex("ResponseId");
-
-                    b.HasIndex("UserId");
 
                     b.ToTable("formresponseanswers", (string)null);
                 });

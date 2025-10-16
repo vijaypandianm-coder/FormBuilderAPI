@@ -1,110 +1,85 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using MongoDB.Driver;
-using Microsoft.EntityFrameworkCore;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Models.MongoModels;
-using FormBuilderAPI.Models.SqlModels;
+using FormBuilderAPI.Helpers;
+
 
 namespace FormBuilderAPI.Services
 {
     public class FormService
     {
         private readonly MongoDbContext _mongo;
-        private readonly SqlDbContext _sql;
 
-        public FormService(MongoDbContext mongo, SqlDbContext sql)
+        public FormService(MongoDbContext mongo)
         {
             _mongo = mongo;
-            _sql = sql;
         }
 
-        // CREATE
+        // Resolve by numeric FormKey
+        public async Task<Form?> GetByFormKeyAsync(int formKey)
+        {
+            return await _mongo.Forms
+                .Find(f => f.FormKey == formKey)
+                .FirstOrDefaultAsync();
+        }
+
+        // Generate next FormKey (max+1) — single writer assumption
+        private async Task<int> GetNextFormKeyAsync()
+        {
+            var latest = await _mongo.Forms
+                .Find(_ => true)
+                .SortByDescending(f => f.FormKey)
+                .Limit(1)
+                .FirstOrDefaultAsync();
+
+            var currentMax = latest?.FormKey ?? 0;
+            return currentMax + 1;
+        }
+
         public async Task<Form> CreateFormAsync(Form form)
         {
-            form.CreatedAt = DateTime.UtcNow;
-            form.UpdatedAt = DateTime.UtcNow;
+            form.CreatedAt = System.DateTime.UtcNow;
+            form.UpdatedAt = System.DateTime.UtcNow;
             form.Status = string.IsNullOrWhiteSpace(form.Status) ? "Draft" : form.Status;
+            form.Access = string.IsNullOrWhiteSpace(form.Access) ? "Open" : form.Access;
+
+            if (form.FormKey is null || form.FormKey <= 0)
+                form.FormKey = await GetNextFormKeyAsync();
+
             await _mongo.Forms.InsertOneAsync(form);
             return form;
         }
 
-        // UPDATE (full replace)
         public async Task<Form?> UpdateFormAsync(string id, Form updated)
         {
-            updated.Id = id; // ensure id is preserved on replace
-            updated.UpdatedAt = DateTime.UtcNow;
+            updated.Id = id;
+            updated.UpdatedAt = System.DateTime.UtcNow;
 
-            var result = await _mongo.Forms.FindOneAndReplaceAsync(
+            return await _mongo.Forms.FindOneAndReplaceAsync(
                 Builders<Form>.Filter.Eq(f => f.Id, id),
                 updated,
                 new FindOneAndReplaceOptions<Form> { ReturnDocument = ReturnDocument.After });
-
-            return result;
         }
 
-        // DELETE (form only)
-        public async Task<bool> DeleteFormAsync(string id)
+        public async Task<bool> DeleteFormAndResponsesAsync(string id)
         {
+            // If you also delete SQL responses, do that in a different service before this call.
             var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == id);
             return res.DeletedCount > 0;
         }
 
-        // DELETE (form + SQL responses)
-        public async Task<bool> DeleteFormAndResponsesAsync(string formId)
-        {
-            // 1) Delete SQL responses & answers
-            // Pull minimal set: Ids + answers
-            var responses = await _sql.FormResponses
-                .Where(r => r.FormId == formId)
-                .Include(r => r.Answers)
-                .ToListAsync();
-
-            if (responses.Count > 0)
-            {
-                // Remove children then parents
-                var allAnswers = responses.SelectMany(r => r.Answers).ToList();
-                if (allAnswers.Count > 0)
-                    _sql.FormResponseAnswers.RemoveRange(allAnswers);
-
-                _sql.FormResponses.RemoveRange(responses);
-                await _sql.SaveChangesAsync();
-            }
-
-            // 2) Delete Mongo form
-            var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == formId);
-            return res.DeletedCount > 0;
-        }
-
-        // STATUS
-        public async Task<Form?> SetStatusAsync(string id, string status)
-        {
-            status = (status?.Equals("Published", StringComparison.OrdinalIgnoreCase) ?? false)
-                ? "Published" : "Draft";
-
-            var update = Builders<Form>.Update
-                .Set(f => f.Status, status)
-                .Set(f => f.PublishedAt, status == "Published" ? DateTime.UtcNow : (DateTime?)null)
-                .Set(f => f.UpdatedAt, DateTime.UtcNow);
-
-            return await _mongo.Forms.FindOneAndUpdateAsync(
-                Builders<Form>.Filter.Eq(f => f.Id, id),
-                update,
-                new FindOneAndUpdateOptions<Form> { ReturnDocument = ReturnDocument.After });
-        }
-
-        // GET (with preview rules)
         public async Task<Form?> GetFormByIdAsync(string id, bool allowPreview, bool isAdmin)
         {
             var f = await _mongo.Forms.Find(x => x.Id == id).FirstOrDefaultAsync();
             if (f is null) return null;
-
-            // Draft hidden from non-admins unless preview=true for admin
             if (f.Status == "Draft" && !(allowPreview || isAdmin))
                 return null;
-
             return f;
         }
 
-        // LIST (filters + visibility)
         public async Task<(List<Form> Items, long Total)> ListAsync(
             string? status,
             string? createdBy,
@@ -120,7 +95,7 @@ namespace FormBuilderAPI.Services
             }
             else
             {
-                if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", StringComparison.OrdinalIgnoreCase))
+                if (!string.IsNullOrWhiteSpace(status) && !status.Equals("All", System.StringComparison.OrdinalIgnoreCase))
                     filter &= Builders<Form>.Filter.Eq(f => f.Status, status);
 
                 if (!string.IsNullOrWhiteSpace(createdBy))

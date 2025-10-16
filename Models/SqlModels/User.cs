@@ -24,6 +24,7 @@ namespace FormBuilderAPI.Models.SqlModels
         // These two are used by your AuthService & policies
         [Required]
         public string Role { get; set; } = "Learner";
+        //public string? DisplayName { get; set; }
 
         public bool IsActive { get; set; } = true;
 

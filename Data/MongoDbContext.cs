@@ -22,6 +22,7 @@ namespace FormBuilderAPI.Data
 
         public IMongoCollection<Form> Forms => _db.GetCollection<Form>("forms");
         public IMongoCollection<Workflow> Workflows => _db.GetCollection<Workflow>("workflows");
+
+        public IMongoCollection<Counter> Counters => _db.GetCollection<Counter>("counters");
     }
 }
-

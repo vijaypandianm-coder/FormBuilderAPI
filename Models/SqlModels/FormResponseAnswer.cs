@@ -8,20 +8,27 @@ namespace FormBuilderAPI.Models.SqlModels
     public class FormResponseAnswer
     {
         [Key]
-        public long Id { get; set; }  // BIGINT AUTO_INCREMENT
+        public long Id { get; set; }
 
-        // FK -> formresponses.Id
         [ForeignKey(nameof(FormResponse))]
         public long ResponseId { get; set; }
-        
+
         [JsonIgnore]
         public FormResponse? FormResponse { get; set; }
 
-        // Field's identifier from the Mongo layout (e.g., "fullName", "q1", etc.)
-        [Required]
+        // denormalized for fast filtering
+        public int? FormKey { get; set; }
+        [Column(TypeName = "varchar(255)")]
+        public string? FormId { get; set; }
+        public long UserId { get; set; }
+
+        [Required, Column(TypeName = "varchar(255)")]
         public string FieldId { get; set; } = default!;
 
-        // Free-form answer (TEXT/LONGTEXT)
+        [Column(TypeName = "varchar(32)")]
+        public string? FieldType { get; set; }
+
         public string? AnswerValue { get; set; }
+        public DateTime SubmittedAt { get; set; }
     }
 }

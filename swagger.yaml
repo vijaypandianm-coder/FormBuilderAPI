@@ -1,0 +1,451 @@
+openapi: 3.0.4
+info:
+  title: FormBuilder API
+  description: 'Forms in MongoDB, Users/Responses in MySQL'
+  version: v1
+paths:
+  '/api/Admin/responses/{formId}':
+    get:
+      tags:
+        - Admin
+      parameters:
+        - name: formId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /api/Auth/register:
+    post:
+      tags:
+        - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: OK
+  /api/Auth/login:
+    post:
+      tags:
+        - Auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+  /api/Forms:
+    post:
+      tags:
+        - Forms
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Form'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/Form'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/Form'
+      responses:
+        '200':
+          description: OK
+    get:
+      tags:
+        - Forms
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: mine
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: OK
+  '/api/Forms/{id}':
+    put:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Form'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/Form'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/Form'
+      responses:
+        '200':
+          description: OK
+    delete:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+    get:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: mode
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  '/api/Forms/{id}/status':
+    patch:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetStatusRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/SetStatusRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/SetStatusRequest'
+      responses:
+        '200':
+          description: OK
+  '/api/Forms/{id}/assignments':
+    post:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignRequest'
+          text/json:
+            schema:
+              $ref: '#/components/schemas/AssignRequest'
+          application/*+json:
+            schema:
+              $ref: '#/components/schemas/AssignRequest'
+      responses:
+        '200':
+          description: OK
+    get:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  '/api/Forms/{id}/assignments/{userId}':
+    delete:
+      tags:
+        - Forms
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: OK
+  '/api/users/{userId}/assignments':
+    get:
+      tags:
+        - Forms
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: OK
+  '/api/forms/{formId}/responses':
+    post:
+      tags:
+        - Responses
+      parameters:
+        - name: formId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FormResponseAnswer'
+          text/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FormResponseAnswer'
+          application/*+json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/FormResponseAnswer'
+      responses:
+        '200':
+          description: OK
+  /api/responses:
+    get:
+      tags:
+        - Responses
+      parameters:
+        - name: mine
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: learnerId
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: formId
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        '200':
+          description: OK
+components:
+  schemas:
+    AssignRequest:
+      type: object
+      properties:
+        userId:
+          type: integer
+          format: int64
+      additionalProperties: false
+    Form:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        layout:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormSection'
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        access:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          nullable: true
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+      additionalProperties: false
+    FormField:
+      type: object
+      properties:
+        fieldId:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+        isRequired:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: string
+          nullable: true
+      additionalProperties: false
+    FormResponseAnswer:
+      required:
+        - fieldId
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        responseId:
+          type: integer
+          format: int64
+        fieldId:
+          minLength: 1
+          type: string
+        answerValue:
+          type: string
+          nullable: true
+      additionalProperties: false
+    FormSection:
+      type: object
+      properties:
+        sectionId:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FormField'
+          nullable: true
+      additionalProperties: false
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+      additionalProperties: false
+    RegisterRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+        role:
+          type: string
+          nullable: true
+      additionalProperties: false
+    SetStatusRequest:
+      type: object
+      properties:
+        status:
+          type: string
+          nullable: true
+      additionalProperties: false
+  securitySchemes:
+    Bearer:
+      type: apiKey
+      description: "JWT Authorization header using the Bearer scheme.\n\nEnter: **Bearer {your_token}**"
+      name: Authorization
+      in: header
+security:
+  - Bearer: [ ]

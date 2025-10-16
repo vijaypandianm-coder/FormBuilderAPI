@@ -6,6 +6,8 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Services;
+using FormBuilderAPI.Application.Interfaces;
+using FormBuilderAPI.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -31,9 +33,13 @@ builder.Services.AddScoped<AuthService>();       // SQL users
 builder.Services.AddScoped<FormService>();       // Mongo forms
 builder.Services.AddScoped<ResponseService>();   // SQL form responses
 builder.Services.AddScoped<AuditService>();      // SQL audit logs (optional)
+builder.Services.AddScoped<AssignmentService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddScoped<IFormAppService, FormAppService>();
+builder.Services.AddScoped<IResponseAppService, ResponseAppService>();
+
 
 // =======================================
 // 4) Swagger + JWT "Authorize" button

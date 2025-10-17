@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <!-- Exclude specific folders -->
+          <Exclude>
+            <!-- Exclude all files under Migrations folder -->
+            <ModulePath>.*Migrations.*</ModulePath>
+          </Exclude>
+
+          <!-- Optional: also exclude generated assemblies -->
+          <ExcludeByFile>
+            **/Migrations/*.cs
+          </ExcludeByFile>
+
+          <!-- Keep attributes exclusion if needed -->
+          <ExcludeByAttribute>
+            <!-- Example: [GeneratedCode] classes -->
+            GeneratedCodeAttribute
+          </ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

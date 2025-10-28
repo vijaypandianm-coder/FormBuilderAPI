@@ -24,7 +24,7 @@ namespace FormBuilderAPI.DTOs
     public class FormSectionDto
     {
         public string? SectionId { get; set; }
-        public string  Title { get; set; } = default!;
+        public string Title { get; set; } = default!;
         public string? Description { get; set; }
         public List<FormFieldDto> Fields { get; set; } = new();
     }
@@ -32,9 +32,9 @@ namespace FormBuilderAPI.DTOs
     public class FormFieldDto
     {
         public string? FieldId { get; set; }
-        public string  Label { get; set; } = default!;
-        public string  Type  { get; set; } = "text"; // text,longText,number,date,file,radio,dropdown,checkbox,multiselect
-        public bool    IsRequired { get; set; }
+        public string Label { get; set; } = default!;
+        public string Type { get; set; } = "text"; // text,longText,number,date,file,radio,dropdown,checkbox,multiselect
+        public bool IsRequired { get; set; }
 
         // OUTPUT ONLY: normalized options with ids (only for choice types)
         public List<FieldOptionDto>? Options { get; set; }
@@ -62,7 +62,7 @@ namespace FormBuilderAPI.DTOs
     public class FormSectionCreateDto
     {
         public string? SectionId { get; set; }
-        public string  Title { get; set; } = default!;
+        public string Title { get; set; } = default!;
         public string? Description { get; set; }
         public List<FieldCreateDto> Fields { get; set; } = new();
     }
@@ -71,9 +71,9 @@ namespace FormBuilderAPI.DTOs
     public class SingleFieldDto
     {
         public string? FieldId { get; set; }        // empty/new => create
-        public string  Label { get; set; } = default!;
-        public string  Type  { get; set; } = "text";
-        public bool    IsRequired { get; set; }
+        public string Label { get; set; } = default!;
+        public string Type { get; set; } = "text";
+        public bool IsRequired { get; set; }
         public List<string>? Options { get; set; }  // only if choice type
     }
 }

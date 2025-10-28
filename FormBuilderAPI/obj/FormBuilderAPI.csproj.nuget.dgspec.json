@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI\\FormBuilderAPI\\FormBuilderAPI.csproj": {}
+    "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI_dummy\\FormBuilderAPI\\FormBuilderAPI.csproj": {}
   },
   "projects": {
-    "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI\\FormBuilderAPI\\FormBuilderAPI.csproj": {
+    "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI_dummy\\FormBuilderAPI\\FormBuilderAPI.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI\\FormBuilderAPI\\FormBuilderAPI.csproj",
+        "projectUniqueName": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI_dummy\\FormBuilderAPI\\FormBuilderAPI.csproj",
         "projectName": "FormBuilderAPI",
-        "projectPath": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI\\FormBuilderAPI\\FormBuilderAPI.csproj",
+        "projectPath": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI_dummy\\FormBuilderAPI\\FormBuilderAPI.csproj",
         "packagesPath": "C:\\Users\\vijaypandian.m_dispr\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI\\FormBuilderAPI\\obj\\",
+        "outputPath": "C:\\Users\\vijaypandian.m_dispr\\FormBuilderAPI_dummy\\FormBuilderAPI\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\vijaypandian.m_dispr\\AppData\\Roaming\\NuGet\\NuGet.Config"
@@ -47,6 +47,18 @@
               "target": "Package",
               "version": "[4.0.3, )"
             },
+            "Dapper": {
+              "target": "Package",
+              "version": "[2.1.35, )"
+            },
+            "DbUp": {
+              "target": "Package",
+              "version": "[5.0.37, )"
+            },
+            "DbUp-MySql": {
+              "target": "Package",
+              "version": "[5.0.37, )"
+            },
             "Microsoft.AspNetCore.Authentication.JwtBearer": {
               "target": "Package",
               "version": "[8.*, )"
@@ -60,6 +72,10 @@
             "MongoDB.Driver": {
               "target": "Package",
               "version": "[3.5.0, )"
+            },
+            "MySqlConnector": {
+              "target": "Package",
+              "version": "[2.3.7, )"
             },
             "Pomelo.EntityFrameworkCore.MySql": {
               "target": "Package",

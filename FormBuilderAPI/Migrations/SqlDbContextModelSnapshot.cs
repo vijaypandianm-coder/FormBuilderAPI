@@ -32,26 +32,42 @@ namespace FormBuilderAPI.Migrations
 
                     b.Property<string>("Action")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
 
                     b.Property<string>("ActorRole")
-                        .HasColumnType("varchar(255)");
+                        .HasColumnType("longtext");
 
                     b.Property<string>("ActorUserId")
                         .HasColumnType("longtext");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
                     b.Property<string>("DetailsJson")
                         .HasColumnType("longtext");
 
+                    b.Property<string>("Entity")
+                        .HasMaxLength(128)
+                        .HasColumnType("varchar(128)");
+
                     b.Property<string>("EntityId")
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("PayloadJson")
                         .HasColumnType("longtext");
 
-                    b.Property<DateTime>("Timestamp")
-                        .HasColumnType("datetime(6)");
+                    b.Property<long?>("UserId")
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ActorRole");
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Action", "Entity");
 
                     b.ToTable("auditlogs", (string)null);
                 });
@@ -65,27 +81,54 @@ namespace FormBuilderAPI.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("AssignedAt")
-                        .HasColumnType("datetime(6)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<long?>("AssignedBy")
                         .HasColumnType("bigint");
 
                     b.Property<string>("FormId")
                         .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("varchar(255)");
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
+                    b.Property<int?>("SequenceNo")
+                        .HasColumnType("int");
 
                     b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("FormId", "SequenceNo")
+                        .IsUnique();
 
                     b.HasIndex("FormId", "UserId")
                         .IsUnique();
 
                     b.ToTable("formassignments", (string)null);
+                });
+
+            modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("FormKey");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("FormId")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FormId");
+
+                    b.ToTable("formkeys", (string)null);
                 });
 
             modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormResponse", b =>
@@ -98,19 +141,23 @@ namespace FormBuilderAPI.Migrations
 
                     b.Property<string>("FormId")
                         .IsRequired()
-                        .HasColumnType("varchar(255)");
+                        .HasMaxLength(24)
+                        .HasColumnType("varchar(24)");
+
+                    b.Property<int>("FormKey")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("SubmittedAt")
-                        .HasColumnType("datetime(6)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("FormId", "SubmittedAt");
+                    b.HasIndex("FormId", "UserId", "SubmittedAt");
 
                     b.ToTable("formresponses", (string)null);
                 });
@@ -124,31 +171,34 @@ namespace FormBuilderAPI.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<string>("AnswerValue")
-                        .HasColumnType("longtext");
+                        .HasMaxLength(4000)
+                        .HasColumnType("varchar(4000)");
 
                     b.Property<string>("FieldId")
                         .IsRequired()
                         .HasColumnType("varchar(255)");
 
-                    b.Property<string>("FormId")
-                        .IsRequired()
-                        .HasColumnType("varchar(255)");
+                    b.Property<string>("FieldType")
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<int?>("FormKey")
+                        .HasColumnType("int");
 
                     b.Property<long>("ResponseId")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<long>("UserId")
                         .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FieldId");
-
-                    b.HasIndex("FormId");
-
                     b.HasIndex("ResponseId");
-
-                    b.HasIndex("UserId");
 
                     b.ToTable("formresponseanswers", (string)null);
                 });
@@ -162,22 +212,29 @@ namespace FormBuilderAPI.Migrations
                     MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime(6)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(256)
+                        .HasColumnType("varchar(256)");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("tinyint(1)");
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(true);
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(512)
+                        .HasColumnType("varchar(512)");
 
                     b.Property<string>("Role")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
 
                     b.Property<string>("Username")
                         .IsRequired()
@@ -186,43 +243,21 @@ namespace FormBuilderAPI.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Email")
+                        .IsUnique();
+
                     b.ToTable("users", (string)null);
-                });
-
-            modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormAssignment", b =>
-                {
-                    b.HasOne("FormBuilderAPI.Models.SqlModels.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormResponse", b =>
-                {
-                    b.HasOne("FormBuilderAPI.Models.SqlModels.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormResponseAnswer", b =>
                 {
                     b.HasOne("FormBuilderAPI.Models.SqlModels.FormResponse", "FormResponse")
-                        .WithMany("Answers")
+                        .WithMany()
                         .HasForeignKey("ResponseId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("FormResponse");
-                });
-
-            modelBuilder.Entity("FormBuilderAPI.Models.SqlModels.FormResponse", b =>
-                {
-                    b.Navigation("Answers");
                 });
 #pragma warning restore 612, 618
         }

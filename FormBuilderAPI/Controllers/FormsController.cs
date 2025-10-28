@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using FormBuilderAPI.Application.Interfaces;
 using FormBuilderAPI.DTOs;
+using System.Linq; // for Any()
 
 namespace FormBuilderAPI.Controllers
 {
@@ -24,16 +25,14 @@ namespace FormBuilderAPI.Controllers
             User.FindFirst("sub")?.Value;
 
         // -------- META --------
-        // POST /api/forms/meta
         [HttpPost("meta")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> CreateMeta([FromBody] FormMetaDto meta)
         {
             var dto = await _app.CreateMetaAsync(CurrentUserId ?? "system", meta);
-            // return Location header to GET by key
             return CreatedAtAction(nameof(GetByKey), new { formKey = dto.FormKey!.Value }, dto);
         }
-        /// <summary>Update title/description (Draft only)</summary>
+
         [HttpPut("{formKey:int}/meta")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> UpdateMeta(int formKey, [FromBody] FormMetaDto meta)
@@ -42,10 +41,7 @@ namespace FormBuilderAPI.Controllers
             return Ok(dto);
         }
 
-
-
         // -------- LAYOUT --------
-        // POST /api/forms/{formKey}/layout (append)
         [HttpPost("{formKey:int}/layout")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> AddLayout(int formKey, [FromBody] FormLayoutDto layout)
@@ -54,7 +50,6 @@ namespace FormBuilderAPI.Controllers
             return Ok(dto);
         }
 
-        // PUT /api/forms/{formKey}/layout (replace)
         [HttpPut("{formKey:int}/layout")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> SetLayout(int formKey, [FromBody] FormLayoutDto layout)
@@ -62,16 +57,6 @@ namespace FormBuilderAPI.Controllers
             var dto = await _app.SetLayoutAsync(formKey, layout);
             return Ok(dto);
         }
-
-        // (optional) single-field upsert helper
-        // POST /api/forms/{formKey}/field
-       // [HttpPost("{formKey:int}/field")]
-        //[Authorize(Policy = "RequireAdmin")]
-        //public async Task<IActionResult> SetField(int formKey, [FromBody] SingleFieldDto dto)
-        //{
-          //  var result = await _app.SetFieldAsync(formKey, dto);
-            //return Ok(result);
-        //}
 
         // -------- STATUS / ACCESS --------
         [HttpPatch("{formKey:int}/status")]
@@ -93,7 +78,7 @@ namespace FormBuilderAPI.Controllers
             var dto = await _app.SetAccessAsync(formKey, body.Access);
             return Ok(dto);
         }
-        /// <summary>Delete a form</summary>
+
         [HttpDelete("{formKey:int}")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Delete(int formKey)
@@ -112,16 +97,64 @@ namespace FormBuilderAPI.Controllers
             return Ok(dto);
         }
 
-        /*[HttpGet]
+        [HttpGet]
         [Authorize(Policy = "RequireLearnerOrAdmin")]
-        public async Task<IActionResult> List([FromQuery] string? status = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+        public async Task<IActionResult> List([FromQuery] string? status = null,
+                                              [FromQuery] int page = 1,
+                                              [FromQuery] int pageSize = 20)
         {
-            var (items, total) = await _app.ListAsync(status, IsAdmin, page, pageSize);
-            return Ok(new { total, page, pageSize, items });
-        }*/
-        // -------- ASSIGNMENTS --------
+            // _app.ListAsync currently returns (IEnumerable<FormOutDto> Items, long Total)
+            var result = await _app.ListAsync(status, IsAdmin, page, pageSize);
 
-        /// <summary>Assign a user to a form</summary>
+            if (IsAdmin)
+            {
+                // Use the local page/pageSize variables, not properties on result
+                return Ok(new
+                {
+                    Total = result.Total,
+                    Page = page,
+                    PageSize = pageSize,
+                    Items = result.Items
+                });
+            }
+
+            // Learner branch: Published only; Restricted requires assignment
+            var userId = CurrentUserId;
+            if (string.IsNullOrEmpty(userId))
+                return Unauthorized();
+
+            var userIdLong = long.TryParse(userId, out var parsed) ? parsed : -1;
+
+            var filtered = new List<FormOutDto>();
+            foreach (var form in result.Items)
+            {
+                if (!string.Equals(form.Status, "Published", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (string.Equals(form.Access, "Open", StringComparison.OrdinalIgnoreCase))
+                {
+                    filtered.Add(form);
+                    continue;
+                }
+
+                if (string.Equals(form.Access, "Restricted", StringComparison.OrdinalIgnoreCase) && form.FormKey.HasValue)
+                {
+                    var assignees = await _app.ListAssigneesAsync(form.FormKey.Value);
+                    var isAssigned = assignees.Any(a => HasUserId(a, userIdLong));
+                    if (isAssigned) filtered.Add(form);
+                }
+            }
+
+            return Ok(new
+            {
+                Total = filtered.Count,
+                Page = page,
+                PageSize = pageSize,
+                Items = filtered
+            });
+        }
+
+        // -------- ASSIGNMENTS --------
         [HttpPost("{formKey:int}/assignments")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Assign(int formKey, [FromBody] AssignRequest body)
@@ -130,7 +163,6 @@ namespace FormBuilderAPI.Controllers
             return NoContent();
         }
 
-        /// <summary>Unassign a user from a form</summary>
         [HttpDelete("{formKey:int}/assignments/{userId:long}")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> Unassign(int formKey, long userId)
@@ -139,7 +171,6 @@ namespace FormBuilderAPI.Controllers
             return NoContent();
         }
 
-        /// <summary>List assignees for a form</summary>
         [HttpGet("{formKey:int}/assignments")]
         [Authorize(Policy = "RequireAdmin")]
         public async Task<IActionResult> ListAssignees(int formKey)
@@ -147,7 +178,28 @@ namespace FormBuilderAPI.Controllers
             var items = await _app.ListAssigneesAsync(formKey);
             return Ok(items);
         }
+
+        // -------- HELPER --------
+        private static bool HasUserId(object? obj, long userId)
+        {
+            if (obj is null) return false;
+            if (obj is long l) return l == userId;
+
+            var prop = obj.GetType().GetProperty("UserId");
+            if (prop?.GetValue(obj) is null) return false;
+
+            try
+            {
+                var value = Convert.ToInt64(prop.GetValue(obj));
+                return value == userId;
+            }
+            catch
+            {
+                return false;
+            }
+        }
     }
+
     public class AssignRequest
     {
         public long UserId { get; set; }

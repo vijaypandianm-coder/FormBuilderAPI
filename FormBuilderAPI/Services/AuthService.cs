@@ -24,7 +24,7 @@ namespace FormBuilderAPI.Services
         // ✅ Register new learner (not admin)
         public async Task<User> RegisterAsync(string username, string email, string password, string role = "Learner")
         {
-             if (!string.Equals(role, "Learner", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(role, "Learner", StringComparison.OrdinalIgnoreCase))
                 throw new Exception("Only Learner accounts can be registered via API");
 
             var exists = await _db.Users.FirstOrDefaultAsync(u => u.Email == email);
@@ -82,7 +82,7 @@ namespace FormBuilderAPI.Services
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()), 
+                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim(JwtRegisteredClaimNames.Email, user.Email),
                 new Claim(ClaimTypes.Role, user.Role)
             };

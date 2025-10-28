@@ -2,41 +2,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using MongoDB.Driver;
+using FormBuilderAPI.Application.Interfaces;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Models.MongoModels;
-using FormBuilderAPI.Helpers;
-
 
 namespace FormBuilderAPI.Services
 {
-    public class FormService
+    public class FormService : IFormService
     {
         private readonly MongoDbContext _mongo;
 
-        public FormService(MongoDbContext mongo)
-        {
-            _mongo = mongo;
-        }
+        public FormService(MongoDbContext mongo) => _mongo = mongo;
 
-        // Resolve by numeric FormKey
         public async Task<Form?> GetByFormKeyAsync(int formKey)
         {
             return await _mongo.Forms
                 .Find(f => f.FormKey == formKey)
                 .FirstOrDefaultAsync();
-        }
-
-        // Generate next FormKey (max+1) — single writer assumption
-        private async Task<int> GetNextFormKeyAsync()
-        {
-            var latest = await _mongo.Forms
-                .Find(_ => true)
-                .SortByDescending(f => f.FormKey)
-                .Limit(1)
-                .FirstOrDefaultAsync();
-
-            var currentMax = latest?.FormKey ?? 0;
-            return currentMax + 1;
         }
 
         public async Task<Form> CreateFormAsync(Form form)
@@ -47,7 +29,16 @@ namespace FormBuilderAPI.Services
             form.Access = string.IsNullOrWhiteSpace(form.Access) ? "Open" : form.Access;
 
             if (form.FormKey is null || form.FormKey <= 0)
-                form.FormKey = await GetNextFormKeyAsync();
+            {
+                // your existing GetNextFormKeyAsync logic (kept private)
+                var latest = await _mongo.Forms
+                    .Find(_ => true)
+                    .SortByDescending(f => f.FormKey)
+                    .Limit(1)
+                    .FirstOrDefaultAsync();
+
+                form.FormKey = (latest?.FormKey ?? 0) + 1;
+            }
 
             await _mongo.Forms.InsertOneAsync(form);
             return form;
@@ -64,28 +55,8 @@ namespace FormBuilderAPI.Services
                 new FindOneAndReplaceOptions<Form> { ReturnDocument = ReturnDocument.After });
         }
 
-        public async Task<bool> DeleteFormAndResponsesAsync(string id)
-        {
-            // If you also delete SQL responses, do that in a different service before this call.
-            var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == id);
-            return res.DeletedCount > 0;
-        }
-
-        public async Task<Form?> GetFormByIdAsync(string id, bool allowPreview, bool isAdmin)
-        {
-            var f = await _mongo.Forms.Find(x => x.Id == id).FirstOrDefaultAsync();
-            if (f is null) return null;
-            if (f.Status == "Draft" && !(allowPreview || isAdmin))
-                return null;
-            return f;
-        }
-
         public async Task<(List<Form> Items, long Total)> ListAsync(
-            string? status,
-            string? createdBy,
-            bool isAdmin,
-            int page,
-            int pageSize)
+            string? status, string? createdBy, bool isAdmin, int page, int pageSize)
         {
             var filter = Builders<Form>.Filter.Empty;
 
@@ -111,6 +82,12 @@ namespace FormBuilderAPI.Services
                 .ToListAsync();
 
             return (items, total);
+        }
+
+        public async Task<bool> DeleteFormAndResponsesAsync(string id)
+        {
+            var res = await _mongo.Forms.DeleteOneAsync(f => f.Id == id);
+            return res.DeletedCount > 0;
         }
     }
 }

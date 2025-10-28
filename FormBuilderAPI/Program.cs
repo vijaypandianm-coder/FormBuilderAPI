@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Diagnostics.CodeAnalysis;
+
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Services;
 using FormBuilderAPI.Application.Interfaces;
@@ -12,35 +13,41 @@ using FormBuilderAPI.Application.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ===============================
+// Connection strings / settings
+// ===============================
+var mysqlCs = builder.Configuration.GetConnectionString("MySqlConnection")
+                 ?? throw new InvalidOperationException("Missing connection string 'MySqlConnection'.");
+
 // =======================================
 // 1) MySQL (EF Core) – Users & Responses
 // =======================================
 builder.Services.AddDbContext<SqlDbContext>(opt =>
-    opt.UseMySql(
-        builder.Configuration.GetConnectionString("MySqlConnection"),
-        ServerVersion.AutoDetect(builder.Configuration.GetConnectionString("MySqlConnection"))
-    ));
+    opt.UseMySql(mysqlCs, ServerVersion.AutoDetect(mysqlCs)));
 
 // =======================================
 // 2) MongoDB – Form Layouts
 // =======================================
 builder.Services.Configure<MongoDbSettings>(builder.Configuration.GetSection("MongoSettings"));
-builder.Services.AddSingleton<MongoDbContext>(); // singleton client/context for forms
+builder.Services.AddSingleton<MongoDbContext>();
 
 // =======================================
 // 3) App Services (DI)
 // =======================================
-builder.Services.AddScoped<AuthService>();       // SQL users
-builder.Services.AddScoped<FormService>();       // Mongo forms
-builder.Services.AddScoped<ResponseService>();   // SQL form responses
-builder.Services.AddScoped<AuditService>();      // SQL audit logs (optional)
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<FormService>();
+builder.Services.AddScoped<ResponseService>();
+builder.Services.AddScoped<AuditService>();
 builder.Services.AddScoped<AssignmentService>();
 
-builder.Services.AddControllers();
-builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddScoped<IFormService, FormService>();
 builder.Services.AddScoped<IFormAppService, FormAppService>();
 builder.Services.AddScoped<IResponseAppService, ResponseAppService>();
 
+builder.Services.AddScoped<IResponsesRepository>(_ => new ResponsesRepository(mysqlCs));
+
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
 
 // =======================================
 // 4) Swagger + JWT "Authorize" button
@@ -83,42 +90,69 @@ builder.Services.AddSwaggerGen(c =>
 // =======================================
 // 5) JWT Authentication & Authorization
 // =======================================
-var jwtKey     = builder.Configuration["Jwt:Key"]!;
-var jwtIssuer  = builder.Configuration["Jwt:Issuer"];
-var jwtAudience= builder.Configuration["Jwt:Audience"];
+var jwtKey = builder.Configuration["Jwt:Key"]!;
+var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services
     .AddAuthentication(options =>
     {
         options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme    = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
     })
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
         {
-            ValidateIssuer           = true,
-            ValidateAudience         = true,
-            ValidateLifetime         = true,
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer              = jwtIssuer,
-            ValidAudience            = jwtAudience,
-            IssuerSigningKey         = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidIssuer = jwtIssuer,
+            ValidAudience = jwtAudience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
         };
     });
 
 builder.Services.AddAuthorization(opts =>
 {
-    opts.AddPolicy("RequireAdmin",          p => p.RequireRole("Admin"));
+    opts.AddPolicy("RequireAdmin", p => p.RequireRole("Admin"));
     opts.AddPolicy("RequireLearnerOrAdmin", p => p.RequireRole("Admin", "Learner"));
 });
 
+// =======================================
+// CORS >>> allow Vite dev server (http & https)
+// =======================================
+var allowedOrigins = new[]
+{
+    "http://localhost:5173",
+    "https://localhost:5173",
+    "http://localhost:5174",
+    "https://localhost:5174"
+};
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("DevCors", policy =>
+        policy
+            .WithOrigins(allowedOrigins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials()   // fine to keep even if you use Bearer
+    );
+});
+// =======================================
+// CORS <<<
+// =======================================
+
+// =======================
+// 6) Build the app
+// =======================
 var app = builder.Build();
 
 // =======================================
-// 6) Global, single-line JSON error handling
+// 7) Global, single-line JSON error handling
 // =======================================
-// Converts *any* unhandled exception into: { "message": "..." }
 app.Use(async (context, next) =>
 {
     try
@@ -127,14 +161,12 @@ app.Use(async (context, next) =>
     }
     catch (Exception ex)
     {
-        // choose a sensible status (you can branch on exception types if you like)
-        context.Response.StatusCode  = (int)HttpStatusCode.BadRequest;
+        context.Response.StatusCode = (int)HttpStatusCode.BadRequest;
         context.Response.ContentType = "application/json";
         await context.Response.WriteAsJsonAsync(new { message = ex.Message });
     }
 });
 
-// Also return tidy JSON for common status codes (401/403/404 etc.)
 app.UseStatusCodePages(async statusCtx =>
 {
     var resp = statusCtx.HttpContext.Response;
@@ -146,32 +178,37 @@ app.UseStatusCodePages(async statusCtx =>
             401 => "Unauthorized",
             403 => "Forbidden",
             404 => "Not Found",
-            _   => $"HTTP {resp.StatusCode}"
+            _ => $"HTTP {resp.StatusCode}"
         }
     });
 });
 
 // =======================================
-// 7) Pipeline
+// 8) Pipeline
 // =======================================
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
-        c.DocumentTitle  = "FormBuilder API Docs";
+        c.DocumentTitle = "FormBuilder API Docs";
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "FormBuilder API v1");
     });
 }
 
-app.UseHttpsRedirection();
-app.UseAuthentication();   // must be before UseAuthorization
+// If your frontend is http://localhost:5173 but this forces HTTPS,
+// keep it – it just redirects; CORS policy above includes https://5173 too.
+//app.UseHttpsRedirection();
+
+// CORS must be BEFORE auth if you want preflight (OPTIONS) to succeed
+app.UseCors("DevCors");
+
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
 
-
 [ExcludeFromCodeCoverage]
-public partial class Program{}
+public partial class Program { }

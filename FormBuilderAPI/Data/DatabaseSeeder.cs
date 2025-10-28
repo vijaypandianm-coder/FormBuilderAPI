@@ -44,12 +44,12 @@ namespace FormBuilderAPI.Data
             // Create admin user
             var admin = new User
             {
-                Username   = "admin",
-                Email      = adminEmail,
+                Username = "admin",
+                Email = adminEmail,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
-                Role       = "Admin",
-                IsActive   = true,
-                CreatedAt  = DateTime.UtcNow
+                Role = "Admin",
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow
             };
 
             _db.Users.Add(admin);

@@ -9,7 +9,7 @@ namespace FormBuilderAPI.Models.SqlModels
         public string? ActorUserId { get; set; }   // ✅ string not int
         public string? EntityId { get; set; }
         public string? Entity { get; set; }
-        public string? PayloadJson{ get; set; }
+        public string? PayloadJson { get; set; }
         public string? DetailsJson { get; set; }
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }

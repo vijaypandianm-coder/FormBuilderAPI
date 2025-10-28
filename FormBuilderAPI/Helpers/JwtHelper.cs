@@ -41,9 +41,12 @@ namespace FormBuilderAPI.Helpers
             var keyBytes = Encoding.UTF8.GetBytes(signingKey);
             var parameters = new TokenValidationParameters
             {
-                ValidateIssuer = true, ValidIssuer = issuer,
-                ValidateAudience = true, ValidAudience = audience,
-                ValidateIssuerSigningKey = true, IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
+                ValidateIssuer = true,
+                ValidIssuer = issuer,
+                ValidateAudience = true,
+                ValidAudience = audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(keyBytes),
                 ValidateLifetime = true,
                 ClockSkew = TimeSpan.FromMinutes(1)
             };

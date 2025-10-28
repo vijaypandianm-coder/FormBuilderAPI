@@ -7,7 +7,7 @@ namespace FormBuilderAPI.Helpers
     public static class ValidationHelper
     {
         public const int ShortTextMax = 100;
-        public const int LongTextMax  = 500;
+        public const int LongTextMax = 500;
         public const string DateFormat = "dd/MM/yyyy";
 
         public static bool IsInteger(string? value)

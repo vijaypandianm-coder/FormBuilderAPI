@@ -7,6 +7,7 @@ using FormBuilderAPI.Models.MongoModels;
 using FormBuilderAPI.Models.SqlModels; // FormResponse, FormResponseAnswer
 using FormBuilderAPI.Services;         // FormService
 using SqlFormResponseAnswer = FormBuilderAPI.Models.SqlModels.FormResponseAnswer;
+using FormBuilderAPI.Application.Interfaces;
 
 namespace FormBuilderAPI.Services
 {
@@ -20,9 +21,9 @@ namespace FormBuilderAPI.Services
     public class ResponseService : IResponseService
     {
         private readonly SqlDbContext _db;
-        private readonly FormService _forms;
+        private readonly IFormService _forms;
 
-        public ResponseService(SqlDbContext db, FormService forms)
+        public ResponseService(SqlDbContext db, IFormService forms)
         {
             _db = db;
             _forms = forms;
@@ -50,9 +51,9 @@ namespace FormBuilderAPI.Services
             // 2) Create header row
             var header = new FormResponse
             {
-                FormId      = form.Id,                 // string id from Mongo
-                FormKey     = form.FormKey ?? formKey, // keep numeric for filtering
-                UserId      = userId,
+                FormId = form.Id,                 // string id from Mongo
+                FormKey = form.FormKey ?? formKey, // keep numeric for filtering
+                UserId = userId,
                 SubmittedAt = DateTime.UtcNow
             };
             _db.FormResponses.Add(header);
@@ -134,7 +135,7 @@ namespace FormBuilderAPI.Services
                 {
                     ResponseId = header.Id,
                     FormKey = header.FormKey,
-                    
+
                     UserId = userId,
                     FieldId = a.FieldId,
                     FieldType = field.Type,
@@ -171,11 +172,11 @@ namespace FormBuilderAPI.Services
                 .ThenBy(a => a.Id)
                 .Select(a => new ResponseFlatRowDto
                 {
-                    ResponseId  = a.ResponseId,
-                    FormKey     = a.FormKey ?? formKey,
-                    UserId      = a.UserId,
+                    ResponseId = a.ResponseId,
+                    FormKey = a.FormKey ?? formKey,
+                    UserId = a.UserId,
                     SubmittedAt = a.SubmittedAt,
-                    FieldId     = a.FieldId,
+                    FieldId = a.FieldId,
                     AnswerValue = a.AnswerValue
                 })
                 .ToListAsync(ct);
@@ -193,11 +194,11 @@ namespace FormBuilderAPI.Services
 
             return new ResponseFlatRowDto
             {
-                ResponseId  = a.ResponseId,
-                FormKey     = a.FormKey ?? 0,
-                UserId      = a.UserId,
+                ResponseId = a.ResponseId,
+                FormKey = a.FormKey ?? 0,
+                UserId = a.UserId,
                 SubmittedAt = a.SubmittedAt,
-                FieldId     = a.FieldId,
+                FieldId = a.FieldId,
                 AnswerValue = a.AnswerValue
             };
         }
@@ -205,11 +206,11 @@ namespace FormBuilderAPI.Services
 
     public class ResponseFlatRowDto
     {
-        public long     ResponseId  { get; set; }
-        public int      FormKey     { get; set; }
-        public long     UserId      { get; set; }
+        public long ResponseId { get; set; }
+        public int FormKey { get; set; }
+        public long UserId { get; set; }
         public DateTime SubmittedAt { get; set; }
-        public string   FieldId     { get; set; } = default!;
-        public string?  AnswerValue { get; set; }
+        public string FieldId { get; set; } = default!;
+        public string? AnswerValue { get; set; }
     }
 }

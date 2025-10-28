@@ -16,17 +16,16 @@ namespace FormBuilderAPI.Application.Services
 {
     public class FormAppService : IFormAppService
     {
-        private readonly FormService _forms;
+        private readonly IFormService _forms;
         private readonly SqlDbContext _db;
         private readonly AssignmentService _assignments;   // ✅ add this
 
-        public FormAppService(FormService forms, SqlDbContext db, AssignmentService assignments) // ✅ inject it
+        public FormAppService(IFormService forms, SqlDbContext db, AssignmentService assignments)
         {
             _forms = forms;
             _db = db;
-            _assignments = assignments; // ✅ set it
+            _assignments = assignments;
         }
-
         // ------------ helpers ------------
         private static List<FieldOption>? BuildOptions(string type, List<string>? incoming)
         {
@@ -37,7 +36,7 @@ namespace FormBuilderAPI.Application.Services
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => new FieldOption
                 {
-                    Id   = Guid.NewGuid().ToString("N"),
+                    Id = Guid.NewGuid().ToString("N"),
                     Text = s.Trim()
                 })
                 .ToList();
@@ -47,9 +46,9 @@ namespace FormBuilderAPI.Application.Services
         {
             var dto = new FormFieldDto
             {
-                FieldId    = f.FieldId,
-                Label      = f.Label,
-                Type       = f.Type,
+                FieldId = f.FieldId,
+                Label = f.Label,
+                Type = f.Type,
                 IsRequired = f.IsRequired
             };
 
@@ -71,24 +70,24 @@ namespace FormBuilderAPI.Application.Services
         {
             return new FormOutDto
             {
-                Id          = f.Id,
-                FormKey     = f.FormKey,
-                Title       = f.Title,
+                Id = f.Id,
+                FormKey = f.FormKey,
+                Title = f.Title,
                 Description = f.Description,
-                Status      = f.Status,
-                Access      = f.Access,
-                CreatedBy   = f.CreatedBy,
+                Status = f.Status,
+                Access = f.Access,
+                CreatedBy = f.CreatedBy,
                 PublishedAt = f.PublishedAt,
-                CreatedAt   = f.CreatedAt,
-                UpdatedAt   = f.UpdatedAt,
-                Layout      = includeLayout
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt,
+                Layout = includeLayout
                     ? f.Layout.Select(s => new FormSectionDto
-                      {
-                          SectionId   = s.SectionId,
-                          Title       = s.Title,
-                          Description = s.Description,
-                          Fields      = s.Fields.Select(ToFieldDto).ToList()
-                      }).ToList()
+                    {
+                        SectionId = s.SectionId,
+                        Title = s.Title,
+                        Description = s.Description,
+                        Fields = s.Fields.Select(ToFieldDto).ToList()
+                    }).ToList()
                     : null
             };
         }
@@ -99,14 +98,14 @@ namespace FormBuilderAPI.Application.Services
         {
             var form = new Form
             {
-                Title       = meta.Title,
+                Title = meta.Title,
                 Description = meta.Description,
-                Status      = "Draft",
-                Access      = "Open",
-                CreatedBy   = createdBy ?? "system",
-                CreatedAt   = DateTime.UtcNow,
-                UpdatedAt   = DateTime.UtcNow,
-                Layout      = new List<FormSection>
+                Status = "Draft",
+                Access = "Open",
+                CreatedBy = createdBy ?? "system",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                Layout = new List<FormSection>
                 {
                     new FormSection { SectionId = Guid.NewGuid().ToString("N"), Title = "Questions", Fields = new() }
                 }
@@ -124,24 +123,24 @@ namespace FormBuilderAPI.Application.Services
             if (string.Equals(form.Status, "Published", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Form is Published and cannot be edited.");
 
-            form.Title       = meta.Title ?? form.Title;
+            form.Title = meta.Title ?? form.Title;
             form.Description = meta.Description ?? form.Description;
-            form.UpdatedAt   = DateTime.UtcNow;
+            form.UpdatedAt = DateTime.UtcNow;
 
             var updated = await _forms.UpdateFormAsync(form.Id, form);
             return new FormOutDto
             {
-                Id          = updated!.Id,
-                FormKey     = updated.FormKey,
-                Title       = updated.Title,
+                Id = updated!.Id,
+                FormKey = updated.FormKey,
+                Title = updated.Title,
                 Description = updated.Description,
-                Status      = updated.Status,
-                Access      = updated.Access,
-                CreatedBy   = updated.CreatedBy,
+                Status = updated.Status,
+                Access = updated.Access,
+                CreatedBy = updated.CreatedBy,
                 PublishedAt = updated.PublishedAt,
-                CreatedAt   = updated.CreatedAt,
-                UpdatedAt   = updated.UpdatedAt,
-                Layout      = null
+                CreatedAt = updated.CreatedAt,
+                UpdatedAt = updated.UpdatedAt,
+                Layout = null
             };
         }
 
@@ -156,16 +155,16 @@ namespace FormBuilderAPI.Application.Services
             {
                 var newSection = new FormSection
                 {
-                    SectionId   = string.IsNullOrWhiteSpace(s.SectionId) ? Guid.NewGuid().ToString("N") : s.SectionId!,
-                    Title       = s.Title,
+                    SectionId = string.IsNullOrWhiteSpace(s.SectionId) ? Guid.NewGuid().ToString("N") : s.SectionId!,
+                    Title = s.Title,
                     Description = s.Description,
-                    Fields      = (s.Fields ?? new()).Select(f => new FormField
+                    Fields = (s.Fields ?? new()).Select(f => new FormField
                     {
-                        FieldId    = string.IsNullOrWhiteSpace(f.FieldId) ? Guid.NewGuid().ToString("N") : f.FieldId!,
-                        Label      = f.Label,
-                        Type       = f.Type,
+                        FieldId = string.IsNullOrWhiteSpace(f.FieldId) ? Guid.NewGuid().ToString("N") : f.FieldId!,
+                        Label = f.Label,
+                        Type = f.Type,
                         IsRequired = f.IsRequired,
-                        Options    = BuildOptions(f.Type, f.Options)
+                        Options = BuildOptions(f.Type, f.Options)
                     }).ToList()
                 };
 
@@ -186,16 +185,16 @@ namespace FormBuilderAPI.Application.Services
 
             form.Layout = (layout.Sections ?? new()).Select(s => new FormSection
             {
-                SectionId   = string.IsNullOrWhiteSpace(s.SectionId) ? Guid.NewGuid().ToString("N") : s.SectionId!,
-                Title       = s.Title,
+                SectionId = string.IsNullOrWhiteSpace(s.SectionId) ? Guid.NewGuid().ToString("N") : s.SectionId!,
+                Title = s.Title,
                 Description = s.Description,
-                Fields      = (s.Fields ?? new()).Select(f => new FormField
+                Fields = (s.Fields ?? new()).Select(f => new FormField
                 {
-                    FieldId    = string.IsNullOrWhiteSpace(f.FieldId) ? Guid.NewGuid().ToString("N") : f.FieldId!,
-                    Label      = f.Label,
-                    Type       = f.Type,
+                    FieldId = string.IsNullOrWhiteSpace(f.FieldId) ? Guid.NewGuid().ToString("N") : f.FieldId!,
+                    Label = f.Label,
+                    Type = f.Type,
                     IsRequired = f.IsRequired,
-                    Options    = BuildOptions(f.Type, f.Options)
+                    Options = BuildOptions(f.Type, f.Options)
                 }).ToList()
             }).ToList();
 
@@ -276,7 +275,7 @@ namespace FormBuilderAPI.Application.Services
 
             if (string.Equals(status, "Published", StringComparison.OrdinalIgnoreCase))
             {
-                form.Status      = "Published";
+                form.Status = "Published";
                 form.PublishedAt = DateTime.UtcNow;
             }
             else
@@ -343,9 +342,9 @@ namespace FormBuilderAPI.Application.Services
             return list.Select(a => new
             {
                 assignmentId = a.SequenceNo > 0 ? (long)a.SequenceNo : a.Id,
-                formId       = a.FormId,
-                userId       = a.UserId,
-                assignedAt   = a.AssignedAt
+                formId = a.FormId,
+                userId = a.UserId,
+                assignedAt = a.AssignedAt
             });
         }
     }

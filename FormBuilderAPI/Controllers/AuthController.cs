@@ -19,7 +19,7 @@ namespace FormBuilderAPI.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest req)
         {
-            var user = await _authService.RegisterAsync(req.Username, req.Email, req.Password,  "Learner");
+            var user = await _authService.RegisterAsync(req.Username, req.Email, req.Password, "Learner");
             return Ok(new { user.Username, user.Email, user.Role });
         }
 

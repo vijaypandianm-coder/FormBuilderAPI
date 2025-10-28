@@ -102,7 +102,7 @@ namespace FormBuilderAPI.Data
                     .HasColumnType("datetime")
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                
+
 
                 e.HasIndex(r => new { r.FormId, r.UserId, r.SubmittedAt });
             });

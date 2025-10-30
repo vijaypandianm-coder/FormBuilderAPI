@@ -1,21 +1,31 @@
 // namespace matches your project root namespace
 using System.Data;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Dapper;
 using MySqlConnector;
+using FormBuilderAPI.DTOs;
 
 namespace FormBuilderAPI.Data
 {
     public interface IResponsesRepository
     {
-        // Minimal methods so Program.cs can resolve the type.
+        // inserts
         Task<long> InsertFormResponseHeaderAsync(long userId, int formKey, string formId);
-        Task<int> InsertFormResponseAnswerAsync(long responseId, long userId, int formKey, string fieldId, string? fieldType, string? answerValue);
+        Task<int>  InsertFormResponseAnswerAsync(long responseId, long userId, int formKey, string fieldId, string? fieldType, string? answerValue);
+
+        // listings
+        Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAsync(int formKey);
+        Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAndUserAsync(int formKey, long userId);
+        Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByUserAsync(long userId);
+
+        // details
+        Task<ResponseHeaderDto?> GetHeaderByIdAsync(long responseId);
+        Task<IReadOnlyList<ResponseAnswerRow>> ListAnswersByResponseIdAsync(long responseId);
     }
 
     /// <summary>
     /// Dapper-based repository for formresponses / formresponseanswers.
-    /// This is deliberately minimal so the project compiles; expand as needed.
     /// </summary>
     public sealed class ResponsesRepository : IResponsesRepository
     {
@@ -56,6 +66,70 @@ VALUES (@ResponseId, @UserId, @FormKey, @FieldId, @FieldType, @AnswerValue, UTC_
                 FieldType = fieldType,
                 AnswerValue = answerValue
             });
+        }
+
+        public async Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAsync(int formKey)
+        {
+            const string sql = @"
+SELECT Id, FormKey, UserId, SubmittedAt
+FROM formresponses
+WHERE FormKey = @FormKey
+ORDER BY SubmittedAt DESC, Id ASC;";
+
+            using var conn = Create();
+            var rows = await conn.QueryAsync<ResponseHeaderDto>(sql, new { FormKey = formKey });
+            return rows.AsList();
+        }
+
+        public async Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAndUserAsync(int formKey, long userId)
+        {
+            const string sql = @"
+SELECT Id, FormKey, UserId, SubmittedAt
+FROM formresponses
+WHERE FormKey = @FormKey AND UserId = @UserId
+ORDER BY SubmittedAt DESC, Id ASC;";
+
+            using var conn = Create();
+            var rows = await conn.QueryAsync<ResponseHeaderDto>(sql, new { FormKey = formKey, UserId = userId });
+            return rows.AsList();
+        }
+
+        public async Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByUserAsync(long userId)
+        {
+            const string sql = @"
+SELECT Id, FormKey, UserId, SubmittedAt
+FROM formresponses
+WHERE UserId = @UserId
+ORDER BY SubmittedAt DESC, Id ASC;";
+
+            using var conn = Create();
+            var rows = await conn.QueryAsync<ResponseHeaderDto>(sql, new { UserId = userId });
+            return rows.AsList();
+        }
+
+        public async Task<ResponseHeaderDto?> GetHeaderByIdAsync(long responseId)
+        {
+            const string sql = @"
+SELECT Id, FormKey, UserId, SubmittedAt
+FROM formresponses
+WHERE Id = @Id
+LIMIT 1;";
+
+            using var conn = Create();
+            return await conn.QueryFirstOrDefaultAsync<ResponseHeaderDto>(sql, new { Id = responseId });
+        }
+
+        public async Task<IReadOnlyList<ResponseAnswerRow>> ListAnswersByResponseIdAsync(long responseId)
+        {
+            const string sql = @"
+SELECT Id, ResponseId, FieldId, FieldType, AnswerValue, SubmittedAt
+FROM formresponseanswers
+WHERE ResponseId = @ResponseId
+ORDER BY Id ASC;";
+
+            using var conn = Create();
+            var rows = await conn.QueryAsync<ResponseAnswerRow>(sql, new { ResponseId = responseId });
+            return rows.AsList();
         }
     }
 }

@@ -1,12 +1,9 @@
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.DTOs;
-using FormBuilderAPI.Helpers;          // FieldTypeHelper
-using FormBuilderAPI.Models.MongoModels;
-using FormBuilderAPI.Models.SqlModels; // FormResponse, FormResponseAnswer
-using FormBuilderAPI.Services;         // FormService
-using SqlFormResponseAnswer = FormBuilderAPI.Models.SqlModels.FormResponseAnswer;
+using FormBuilderAPI.Helpers;              // FieldTypeHelper, ValidationHelper
+using FormBuilderAPI.Models.MongoModels;   // Form, FormSection, FormField
+using FormBuilderAPI.Models.SqlModels;     // (for model names only)
 using FormBuilderAPI.Application.Interfaces;
 
 namespace FormBuilderAPI.Services
@@ -14,52 +11,49 @@ namespace FormBuilderAPI.Services
     public interface IResponseService
     {
         Task<long> SaveAsync(int formKey, long userId, SubmitResponseDto payload, CancellationToken ct = default);
+
+        // existing flat list used by your old GET /api/Responses/{formKey}
         Task<IReadOnlyList<ResponseFlatRowDto>> ListAsync(int formKey, long? userId = null, CancellationToken ct = default);
+
+        // new admin/learner listings
+        Task<IReadOnlyList<PublishedFormDto>> ListPublishedFormsAsync(CancellationToken ct = default);
+        Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAsync(int formKey, CancellationToken ct = default);
+        Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByUserAsync(long userId, CancellationToken ct = default);
+        Task<ResponseDetailDto?> GetDetailAsync(long responseId, CancellationToken ct = default);
+
         Task<ResponseFlatRowDto?> GetAsync(long id, CancellationToken ct = default);
     }
 
     public class ResponseService : IResponseService
     {
-        private readonly SqlDbContext _db;
         private readonly IFormService _forms;
+        private readonly IResponsesRepository _repo;
 
-        public ResponseService(SqlDbContext db, IFormService forms)
+        public ResponseService(IFormService forms, IResponsesRepository repo)
         {
-            _db = db;
             _forms = forms;
+            _repo  = repo;
         }
 
-        /// <summary>
-        /// Saves one submission header (formresponses) and one answer per field (formresponseanswers).
-        /// Choice answers are collapsed into AnswerValue (single = optionId; multi = JSON array string).
-        /// </summary>
+        // ───────────────── Save (Dapper) ─────────────────
         public async Task<long> SaveAsync(int formKey, long userId, SubmitResponseDto payload, CancellationToken ct = default)
         {
             if (payload == null || payload.Answers == null || payload.Answers.Count == 0)
                 throw new InvalidOperationException("No answers provided.");
 
-            // 1) Load form + layout
+            // 1) Load form + layout (must be Published)
             var form = await _forms.GetByFormKeyAsync(formKey) ?? throw new KeyNotFoundException("Form not found.");
             if (!string.Equals(form.Status, "Published", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Form is not published.");
 
-            // Lookup fields by FieldId
             var fieldLookup = (form.Layout ?? new List<FormSection>())
                 .SelectMany(s => s.Fields ?? new List<FormField>())
                 .ToDictionary(f => f.FieldId, StringComparer.Ordinal);
 
-            // 2) Create header row
-            var header = new FormResponse
-            {
-                FormId = form.Id,                 // string id from Mongo
-                FormKey = form.FormKey ?? formKey, // keep numeric for filtering
-                UserId = userId,
-                SubmittedAt = DateTime.UtcNow
-            };
-            _db.FormResponses.Add(header);
-            await _db.SaveChangesAsync(ct); // header.Id now available
+            // 2) Insert header via Dapper
+            var headerId = await _repo.InsertFormResponseHeaderAsync(userId, form.FormKey ?? formKey, form.Id);
 
-            // 3) Create answer rows
+            // 3) Validate + insert each answer via Dapper
             foreach (var a in payload.Answers)
             {
                 if (string.IsNullOrWhiteSpace(a.FieldId))
@@ -70,7 +64,7 @@ namespace FormBuilderAPI.Services
 
                 var isChoice = FieldTypeHelper.IsChoice(field.Type);
 
-                // Required validation
+                // Required checks
                 if (field.IsRequired)
                 {
                     if (isChoice)
@@ -78,14 +72,13 @@ namespace FormBuilderAPI.Services
                         if (a.OptionIds is null || a.OptionIds.Count == 0)
                             throw new InvalidOperationException($"'{field.Label}' is required.");
                     }
-                    else
+                    else if (string.IsNullOrWhiteSpace(a.AnswerValue))
                     {
-                        if (string.IsNullOrWhiteSpace(a.AnswerValue))
-                            throw new InvalidOperationException($"'{field.Label}' is required.");
+                        throw new InvalidOperationException($"'{field.Label}' is required.");
                     }
                 }
 
-                // Type-specific validation for non-choice (optional; keep if you already have helpers)
+                // Type checks (non-choice)
                 if (!isChoice && !string.IsNullOrEmpty(field.Type))
                 {
                     switch (field.Type.Trim().ToLowerInvariant())
@@ -93,13 +86,12 @@ namespace FormBuilderAPI.Services
                         case "shorttext":
                         case "text":
                             if ((a.AnswerValue ?? "").Length > ValidationHelper.ShortTextMax)
-                                throw new InvalidOperationException(
-                                    $"'{field.Label}' must be ≤ {ValidationHelper.ShortTextMax} characters.");
+                                throw new InvalidOperationException($"'{field.Label}' must be ≤ {ValidationHelper.ShortTextMax} characters.");
                             break;
                         case "longtext":
+                        case "textarea":
                             if ((a.AnswerValue ?? "").Length > ValidationHelper.LongTextMax)
-                                throw new InvalidOperationException(
-                                    $"'{field.Label}' must be ≤ {ValidationHelper.LongTextMax} characters.");
+                                throw new InvalidOperationException($"'{field.Label}' must be ≤ {ValidationHelper.LongTextMax} characters.");
                             break;
                         case "number":
                             if (!ValidationHelper.IsInteger(a.AnswerValue))
@@ -107,103 +99,146 @@ namespace FormBuilderAPI.Services
                             break;
                         case "date":
                             if (!ValidationHelper.TryParseDateDdMmYyyy(a.AnswerValue, out _))
-                                throw new InvalidOperationException(
-                                    $"'{field.Label}' must be in {ValidationHelper.DateFormat} format.");
-                            break;
-                        default:
+                                throw new InvalidOperationException($"'{field.Label}' must be in {ValidationHelper.DateFormat} format.");
                             break;
                     }
                 }
 
-                // Collapse to AnswerValue per your rule
-                string? storedValue = a.AnswerValue;
+                // Collapse choice(s)
+                string? stored = a.AnswerValue;
                 if (isChoice)
                 {
                     var ids = a.OptionIds ?? new List<string>();
-                    // validate option ids against layout
                     var valid = new HashSet<string>((field.Options ?? new()).Select(o => o.Id));
                     if (!ids.All(valid.Contains))
                         throw new InvalidOperationException($"One or more OptionIds are invalid for '{field.Label}'.");
 
-                    storedValue = ids.Count <= 1 ? ids.FirstOrDefault() : JsonSerializer.Serialize(ids);
+                    stored = ids.Count <= 1 ? ids.FirstOrDefault() : JsonSerializer.Serialize(ids);
                 }
+                stored ??= string.Empty;
 
-                if (string.IsNullOrWhiteSpace(storedValue))
-                    storedValue = string.Empty; // allow empty if not required
+                var enumType = MapToSqlFieldType(field.Type);
 
-                var answer = new FormResponseAnswer
-                {
-                    ResponseId = header.Id,
-                    FormKey = header.FormKey,
-
-                    UserId = userId,
-                    FieldId = a.FieldId,
-                    FieldType = field.Type,
-                    AnswerValue = storedValue,
-                    SubmittedAt = DateTime.UtcNow
-                };
-
-                _db.Set<FormResponseAnswer>().Add(answer);
+                await _repo.InsertFormResponseAnswerAsync(
+                    responseId: headerId,
+                    userId: userId,
+                    formKey: form.FormKey ?? formKey,
+                    fieldId: a.FieldId,
+                    fieldType: enumType,
+                    answerValue: stored
+                );
             }
 
-            await _db.SaveChangesAsync(ct);
-            return header.Id;
+            return headerId;
         }
 
-        /// <summary>
-        /// Flat listing of saved rows (answers) for a form; optionally filter by userId.
-        /// </summary>
+        // ───────────────── Existing flat list (kept) ─────────────────
+        // This builds a flat view from header+answers using new repo methods.
         public async Task<IReadOnlyList<ResponseFlatRowDto>> ListAsync(int formKey, long? userId = null, CancellationToken ct = default)
         {
-            var q = _db.FormResponses.AsNoTracking().Where(r => r.FormKey == formKey);
+            var headers = userId.HasValue
+                ? await _repo.ListHeadersByFormKeyAndUserAsync(formKey, userId.Value)
+                : await _repo.ListHeadersByFormKeyAsync(formKey);
 
-            if (userId.HasValue)
-                q = q.Where(r => r.UserId == userId);
+            if (headers.Count == 0) return Array.Empty<ResponseFlatRowDto>();
 
-            // join answers for those headers
-            var headerIds = await q.Select(r => r.Id).ToListAsync(ct);
-
-            if (headerIds.Count == 0) return Array.Empty<ResponseFlatRowDto>();
-
-            var rows = await _db.Set<FormResponseAnswer>()
-                .AsNoTracking()
-                .Where(a => headerIds.Contains(a.ResponseId))
-                .OrderByDescending(a => a.SubmittedAt)
-                .ThenBy(a => a.Id)
-                .Select(a => new ResponseFlatRowDto
+            var rows = new List<ResponseFlatRowDto>();
+            foreach (var h in headers)
+            {
+                var answers = await _repo.ListAnswersByResponseIdAsync(h.Id);
+                foreach (var a in answers)
                 {
-                    ResponseId = a.ResponseId,
-                    FormKey = a.FormKey ?? formKey,
-                    UserId = a.UserId,
-                    SubmittedAt = a.SubmittedAt,
-                    FieldId = a.FieldId,
-                    AnswerValue = a.AnswerValue
-                })
-                .ToListAsync(ct);
-
+                    rows.Add(new ResponseFlatRowDto
+                    {
+                        ResponseId = h.Id,
+                        FormKey = h.FormKey,
+                        UserId = h.UserId,
+                        SubmittedAt = h.SubmittedAt,
+                        FieldId = a.FieldId,
+                        AnswerValue = a.AnswerValue
+                    });
+                }
+            }
             return rows;
+        }
+
+        // ───────────────── New admin/learner listings ─────────────────
+        public async Task<IReadOnlyList<PublishedFormDto>> ListPublishedFormsAsync(CancellationToken ct = default)
+        {
+            var (items, _) = await _forms.ListAsync("Published", null, isAdmin: true, page: 1, pageSize: 200);
+            return items.Select(f => new PublishedFormDto
+            {
+                FormKey = f.FormKey ?? 0,
+                Title = f.Title,
+                Description = f.Description,
+                PublishedAt = f.PublishedAt
+            }).ToList();
+        }
+
+        public Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAsync(int formKey, CancellationToken ct = default)
+            => _repo.ListHeadersByFormKeyAsync(formKey);
+
+        public Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByUserAsync(long userId, CancellationToken ct = default)
+            => _repo.ListHeadersByUserAsync(userId);
+
+        public async Task<ResponseDetailDto?> GetDetailAsync(long responseId, CancellationToken ct = default)
+        {
+            var header = await _repo.GetHeaderByIdAsync(responseId);
+            if (header is null) return null;
+            var answers = await _repo.ListAnswersByResponseIdAsync(responseId);
+            return new ResponseDetailDto
+            {
+                Header = header,
+                Answers = answers
+                    .Select(a => new ResponseAnswerDto
+                    {
+                        FieldId = a.FieldId,
+                        FieldType = a.FieldType,
+                        AnswerValue = a.AnswerValue
+                    })
+                    .ToList()
+            };
         }
 
         public async Task<ResponseFlatRowDto?> GetAsync(long id, CancellationToken ct = default)
         {
-            var a = await _db.Set<FormResponseAnswer>()
-                .AsNoTracking()
-                .FirstOrDefaultAsync(x => x.Id == id, ct);
-
-            if (a == null) return null;
-
+            var h = await _repo.GetHeaderByIdAsync(id);
+            if (h is null) return null;
+            // return a synthetic single-row summary (first answer) to keep old signature
+            var a = (await _repo.ListAnswersByResponseIdAsync(id)).FirstOrDefault();
             return new ResponseFlatRowDto
             {
-                ResponseId = a.ResponseId,
-                FormKey = a.FormKey ?? 0,
-                UserId = a.UserId,
-                SubmittedAt = a.SubmittedAt,
-                FieldId = a.FieldId,
-                AnswerValue = a.AnswerValue
+                ResponseId = h.Id,
+                FormKey = h.FormKey,
+                UserId = h.UserId,
+                SubmittedAt = h.SubmittedAt,
+                FieldId = a?.FieldId ?? string.Empty,
+                AnswerValue = a?.AnswerValue
+            };
+        }
+
+        private static string? MapToSqlFieldType(string? formFieldType)
+        {
+            if (string.IsNullOrWhiteSpace(formFieldType)) return null;
+            var t = formFieldType.Trim().ToLowerInvariant();
+            return t switch
+            {
+                "shorttext" or "short_text" or "text" => "shortText",
+                "longtext" or "long_text" or "textarea" => "textarea",
+                "email" => "email",
+                "number" => "number",
+                "date" => "date",
+                "radio" => "radio",
+                "dropdown" => "dropdown",
+                "checkbox" => "checkbox",
+                "multiselect" or "multi-select" => "multiselect",
+                "mcq" or "multiple" => "mcq",
+                _ => null
             };
         }
     }
 
+    // ───────── DTOs used by this service ─────────
     public class ResponseFlatRowDto
     {
         public long ResponseId { get; set; }

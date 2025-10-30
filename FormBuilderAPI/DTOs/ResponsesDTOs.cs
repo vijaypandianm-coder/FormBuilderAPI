@@ -1,21 +1,58 @@
-// DTOs/ResponsesDTOs.cs
+using System;
 using System.Collections.Generic;
 
 namespace FormBuilderAPI.DTOs
 {
+    // ───────── existing submit payloads ─────────
     public class SubmitAnswerDto
     {
         public string FieldId { get; set; } = default!;
-
-        // non-choice types use this
         public string? AnswerValue { get; set; }
-
-        // choice types (radio/checkbox/dropdown/multiselect) send only option ids
         public List<string>? OptionIds { get; set; }
     }
 
     public class SubmitResponseDto
     {
         public List<SubmitAnswerDto> Answers { get; set; } = new();
+    }
+
+    // ───────── new lightweight view DTOs ─────────
+    public class ResponseHeaderDto
+    {
+        public long Id { get; set; }
+        public int FormKey { get; set; }
+        public long UserId { get; set; }
+        public DateTime SubmittedAt { get; set; }
+    }
+
+    public class ResponseAnswerRow
+    {
+        public long Id { get; set; }
+        public long ResponseId { get; set; }
+        public string FieldId { get; set; } = default!;
+        public string? FieldType { get; set; }
+        public string? AnswerValue { get; set; }
+        public DateTime SubmittedAt { get; set; }
+    }
+
+    public class ResponseAnswerDto
+    {
+        public string FieldId { get; set; } = default!;
+        public string? FieldType { get; set; }
+        public string? AnswerValue { get; set; }
+    }
+
+    public class ResponseDetailDto
+    {
+        public ResponseHeaderDto Header { get; set; } = default!;
+        public List<ResponseAnswerDto> Answers { get; set; } = new();
+    }
+
+    public class PublishedFormDto
+    {
+        public int FormKey { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+        public DateTime? PublishedAt { get; set; }
     }
 }

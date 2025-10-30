@@ -14,6 +14,7 @@ namespace FormBuilderAPI.Data
         public DbSet<FormResponseAnswer> FormResponseAnswers => Set<FormResponseAnswer>();
         public DbSet<User> Users => Set<User>();
         public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+        public DbSet<FormResponseFile> FormResponseFiles { get; set; } = default!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FormBuilderAPI.DTOs;
 using FormBuilderAPI.Services;
+using FormBuilderAPI.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -17,10 +18,13 @@ namespace FormBuilderAPI.Controllers
     public class ResponsesController : ControllerBase
     {
         private readonly ResponseService _responses;
+        private readonly IResponsesRepository _repo;
 
-        public ResponsesController(ResponseService responses)
+
+        public ResponsesController(ResponseService responses, IResponsesRepository repo)
         {
             _responses = responses;
+            _repo = repo;
         }
 
         private long CurrentUserId =>
@@ -98,5 +102,28 @@ namespace FormBuilderAPI.Controllers
 
             return Ok(dto);
         }
+        /// <summary>GET /api/Response/file/{fileId} - download uploaded file</summary>
+        [HttpGet("/api/Response/file/{fileId:long}")]
+        [Authorize(Policy = "RequireLearnerOrAdmin")]
+        public async Task<IActionResult> DownloadFile(long fileId)
+        {
+            // 1) Ownership / access check
+            var owner = await _repo.GetFileOwnerByIdAsync(fileId);
+            if (owner is null) return NotFound(new { message = "File not found" });
+
+            var (responseId, responseUserId, _) = owner.Value;
+
+            var isAdmin = User.IsInRole("Admin");
+            if (!isAdmin && responseUserId != CurrentUserId)
+                return Forbid();
+
+            // 2) Fetch file payload
+            var file = await _repo.GetFileAsync(fileId);
+            if (file is null) return NotFound(new { message = "File not found" });
+
+            var (name, type, blob) = file.Value;
+            return File(blob, string.IsNullOrWhiteSpace(type) ? "application/octet-stream" : type, fileDownloadName: name);
+        }
+
     }
 }

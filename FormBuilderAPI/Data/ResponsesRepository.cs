@@ -12,7 +12,7 @@ namespace FormBuilderAPI.Data
     {
         // inserts
         Task<long> InsertFormResponseHeaderAsync(long userId, int formKey, string formId);
-        Task<int>  InsertFormResponseAnswerAsync(long responseId, long userId, int formKey, string fieldId, string? fieldType, string? answerValue);
+        Task<int> InsertFormResponseAnswerAsync(long responseId, long userId, int formKey, string fieldId, string? fieldType, string? answerValue);
 
         // listings
         Task<IReadOnlyList<ResponseHeaderDto>> ListHeadersByFormKeyAsync(int formKey);
@@ -22,6 +22,11 @@ namespace FormBuilderAPI.Data
         // details
         Task<ResponseHeaderDto?> GetHeaderByIdAsync(long responseId);
         Task<IReadOnlyList<ResponseAnswerRow>> ListAnswersByResponseIdAsync(long responseId);
+        Task<long> InsertFileAsync(long responseId, int formKey, string fieldId,
+                           string fileName, string contentType, long sizeBytes, byte[] blob);
+        Task<(string FileName, string ContentType, byte[] Blob)?> GetFileAsync(long fileId);
+        Task<(long ResponseUserId, int FormKey)?> GetResponseOwnerAsync(long responseId);
+        Task<(long ResponseId, long ResponseUserId, int FormKey)?> GetFileOwnerByIdAsync(long fileId);
     }
 
     /// <summary>
@@ -130,6 +135,61 @@ ORDER BY Id ASC;";
             using var conn = Create();
             var rows = await conn.QueryAsync<ResponseAnswerRow>(sql, new { ResponseId = responseId });
             return rows.AsList();
+        }
+        public async Task<long> InsertFileAsync(long responseId, int formKey, string fieldId,
+                                        string fileName, string contentType, long sizeBytes, byte[] blob)
+        {
+            const string sql = @"
+INSERT INTO formresponsefiles (ResponseId, FormKey, FieldId, FileName, ContentType, SizeBytes, Blob, CreatedAt)
+VALUES (@ResponseId, @FormKey, @FieldId, @FileName, @ContentType, @SizeBytes, @Blob, UTC_TIMESTAMP());
+SELECT LAST_INSERT_ID();";
+
+            using var conn = Create();
+            return await conn.ExecuteScalarAsync<long>(sql, new
+            {
+                ResponseId = responseId,
+                FormKey = formKey,
+                FieldId = fieldId,
+                FileName = fileName,
+                ContentType = contentType,
+                SizeBytes = sizeBytes,
+                Blob = blob
+            });
+        }
+
+        public async Task<(string FileName, string ContentType, byte[] Blob)?> GetFileAsync(long fileId)
+        {
+            const string sql = @"
+SELECT FileName, ContentType, Blob
+FROM formresponsefiles
+WHERE Id = @Id
+LIMIT 1;";
+            using var conn = Create();
+            var row = await conn.QueryFirstOrDefaultAsync(sql, new { Id = fileId });
+            if (row == null) return null;
+            return ((string)row.FileName, (string)row.ContentType, (byte[])row.Blob);
+        }
+
+        public async Task<(long ResponseUserId, int FormKey)?> GetResponseOwnerAsync(long responseId)
+        {
+            const string sql = @"SELECT UserId, FormKey FROM formresponses WHERE Id = @Id LIMIT 1;";
+            using var conn = Create();
+            var row = await conn.QueryFirstOrDefaultAsync(sql, new { Id = responseId });
+            if (row == null) return null;
+            return ((long)row.UserId, (int)row.FormKey);
+        }
+        public async Task<(long ResponseId, long ResponseUserId, int FormKey)?> GetFileOwnerByIdAsync(long fileId)
+        {
+            const string sql = @"
+SELECT f.ResponseId, r.UserId AS ResponseUserId, r.FormKey
+FROM formresponsefiles f
+JOIN formresponses r ON r.Id = f.ResponseId
+WHERE f.Id = @Id
+LIMIT 1;";
+            using var conn = Create();
+            var row = await conn.QueryFirstOrDefaultAsync(sql, new { Id = fileId });
+            if (row == null) return null;
+            return ((long)row.ResponseId, (long)row.ResponseUserId, (int)row.FormKey);
         }
     }
 }

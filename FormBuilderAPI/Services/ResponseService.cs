@@ -5,6 +5,10 @@ using FormBuilderAPI.Helpers;              // FieldTypeHelper, ValidationHelper
 using FormBuilderAPI.Models.MongoModels;   // Form, FormSection, FormField
 using FormBuilderAPI.Models.SqlModels;     // (for model names only)
 using FormBuilderAPI.Application.Interfaces;
+using System;
+using System.Linq;
+using System.Collections.Generic;
+
 
 namespace FormBuilderAPI.Services
 {
@@ -118,6 +122,57 @@ namespace FormBuilderAPI.Services
                 stored ??= string.Empty;
 
                 var enumType = MapToSqlFieldType(field.Type);
+
+                var isFile = string.Equals(field.Type?.Trim(), "file", StringComparison.OrdinalIgnoreCase);
+                if (isFile)
+                {
+                    // Required check
+                    if (field.IsRequired && string.IsNullOrWhiteSpace(a.FileBase64))
+                        throw new InvalidOperationException($"'{field.Label}' is required.");
+                    // If no file provided and not required, store empty answer and continue
+                    if (string.IsNullOrWhiteSpace(a.FileBase64))
+                    {
+                        await _repo.InsertFormResponseAnswerAsync(
+                            responseId: headerId,
+                            userId: userId,
+                            formKey: form.FormKey ?? formKey,
+                            fieldId: a.FieldId,
+                            fieldType: "file",
+                            answerValue: ""
+                        );
+                        continue;
+                    }
+                    // Decode base64 (strip data URL if present)
+                    string b64 = a.FileBase64!;
+                    var comma = b64.IndexOf(',');
+                    if (comma >= 0) b64 = b64[(comma + 1)..];
+                    byte[] bytes;
+                    try { bytes = Convert.FromBase64String(b64); }
+                    catch { throw new InvalidOperationException($"Invalid base64 for '{field.Label}'."); }
+                    // (Optional) size limit
+                    const long MAX = 10L * 1024 * 1024; // 10 MB
+                    if (bytes.LongLength > MAX)
+                        throw new InvalidOperationException($"'{field.Label}' exceeds 10 MB.");
+                    var fileId = await _repo.InsertFileAsync(
+                        responseId: headerId,
+                        formKey: form.FormKey ?? formKey,
+                        fieldId: a.FieldId,
+                        fileName: string.IsNullOrWhiteSpace(a.FileName) ? "upload.bin" : a.FileName!,
+                        contentType: string.IsNullOrWhiteSpace(a.ContentType) ? "application/octet-stream" : a.ContentType!,
+                        sizeBytes: bytes.LongLength,
+                        blob: bytes
+                    );
+                    var token = $"file:{fileId}";
+                    await _repo.InsertFormResponseAnswerAsync(
+                        responseId: headerId,
+                        userId: userId,
+                        formKey: form.FormKey ?? formKey,
+                        fieldId: a.FieldId,
+                        fieldType: "file",
+                        answerValue: token
+                    );
+                    continue; // important
+                }
 
                 await _repo.InsertFormResponseAnswerAsync(
                     responseId: headerId,
@@ -233,6 +288,7 @@ namespace FormBuilderAPI.Services
                 "checkbox" => "checkbox",
                 "multiselect" or "multi-select" => "multiselect",
                 "mcq" or "multiple" => "mcq",
+                "file" => "file",
                 _ => null
             };
         }

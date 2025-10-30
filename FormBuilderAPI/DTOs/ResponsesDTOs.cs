@@ -9,6 +9,9 @@ namespace FormBuilderAPI.DTOs
         public string FieldId { get; set; } = default!;
         public string? AnswerValue { get; set; }
         public List<string>? OptionIds { get; set; }
+        public string? FileName { get; set; }
+        public string? ContentType { get; set; }          // e.g., "image/png"
+        public string? FileBase64 { get; set; }           // base64 data only, no data: prefix
     }
 
     public class SubmitResponseDto

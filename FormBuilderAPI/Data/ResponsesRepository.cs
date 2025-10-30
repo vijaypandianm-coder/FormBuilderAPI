@@ -140,7 +140,7 @@ ORDER BY Id ASC;";
                                         string fileName, string contentType, long sizeBytes, byte[] blob)
         {
             const string sql = @"
-INSERT INTO formresponsefiles (ResponseId, FormKey, FieldId, FileName, ContentType, SizeBytes, Blob, CreatedAt)
+INSERT INTO formresponsefiles (ResponseId, FormKey, FieldId, FileName, ContentType, SizeBytes, `Blob`, CreatedAt)
 VALUES (@ResponseId, @FormKey, @FieldId, @FileName, @ContentType, @SizeBytes, @Blob, UTC_TIMESTAMP());
 SELECT LAST_INSERT_ID();";
 
@@ -160,7 +160,7 @@ SELECT LAST_INSERT_ID();";
         public async Task<(string FileName, string ContentType, byte[] Blob)?> GetFileAsync(long fileId)
         {
             const string sql = @"
-SELECT FileName, ContentType, Blob
+SELECT FileName, ContentType, `Blob`
 FROM formresponsefiles
 WHERE Id = @Id
 LIMIT 1;";

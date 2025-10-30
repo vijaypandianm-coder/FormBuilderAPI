@@ -62,13 +62,15 @@ namespace FormBuilderAPI.Services
             {
                 if (string.IsNullOrWhiteSpace(a.FieldId))
                     throw new InvalidOperationException("Each answer must include fieldId.");
-
                 if (!fieldLookup.TryGetValue(a.FieldId, out var field))
                     throw new InvalidOperationException($"Unknown field: {a.FieldId}");
-
-                var isChoice = FieldTypeHelper.IsChoice(field.Type);
-
-                // Required checks
+    
+                // Normalize type once
+                var t = (field.Type ?? string.Empty).Trim().ToLowerInvariant();
+                var isChoice = FieldTypeHelper.IsChoice(t);
+                var isFile   = t == "file";
+    
+                // ===== Required checks (files included here) =====
                 if (field.IsRequired)
                 {
                     if (isChoice)
@@ -76,16 +78,22 @@ namespace FormBuilderAPI.Services
                         if (a.OptionIds is null || a.OptionIds.Count == 0)
                             throw new InvalidOperationException($"'{field.Label}' is required.");
                     }
-                    else if (string.IsNullOrWhiteSpace(a.AnswerValue))
+                    else if (isFile)
                     {
-                        throw new InvalidOperationException($"'{field.Label}' is required.");
+                        if (string.IsNullOrWhiteSpace(a.FileBase64))
+                            throw new InvalidOperationException($"'{field.Label}' is required.");
+                    }
+                    else
+                    {
+                        if (string.IsNullOrWhiteSpace(a.AnswerValue))
+                            throw new InvalidOperationException($"'{field.Label}' is required.");
                     }
                 }
-
-                // Type checks (non-choice)
-                if (!isChoice && !string.IsNullOrEmpty(field.Type))
+    
+                // ===== Type checks (skip for file & choice) =====
+                if (!isChoice && !isFile && !string.IsNullOrEmpty(t))
                 {
-                    switch (field.Type.Trim().ToLowerInvariant())
+                    switch (t)
                     {
                         case "shorttext":
                         case "text":
@@ -107,52 +115,43 @@ namespace FormBuilderAPI.Services
                             break;
                     }
                 }
-
-                // Collapse choice(s)
+    
+                // ===== Choice collapse =====
                 string? stored = a.AnswerValue;
                 if (isChoice)
                 {
-                    var ids = a.OptionIds ?? new List<string>();
+                    var ids   = a.OptionIds ?? new List<string>();
                     var valid = new HashSet<string>((field.Options ?? new()).Select(o => o.Id));
                     if (!ids.All(valid.Contains))
                         throw new InvalidOperationException($"One or more OptionIds are invalid for '{field.Label}'.");
-
                     stored = ids.Count <= 1 ? ids.FirstOrDefault() : JsonSerializer.Serialize(ids);
                 }
                 stored ??= string.Empty;
-
-                var enumType = MapToSqlFieldType(field.Type);
-
-                var isFile = string.Equals(field.Type?.Trim(), "file", StringComparison.OrdinalIgnoreCase);
+    
+                // ===== File handling =====
                 if (isFile)
                 {
-                    // Required check
-                    if (field.IsRequired && string.IsNullOrWhiteSpace(a.FileBase64))
-                        throw new InvalidOperationException($"'{field.Label}' is required.");
-                    // If no file provided and not required, store empty answer and continue
+                    // If optional & empty, still write an answer row with empty token
                     if (string.IsNullOrWhiteSpace(a.FileBase64))
                     {
-                        await _repo.InsertFormResponseAnswerAsync(
-                            responseId: headerId,
-                            userId: userId,
-                            formKey: form.FormKey ?? formKey,
-                            fieldId: a.FieldId,
-                            fieldType: "file",
-                            answerValue: ""
-                        );
+                        await _repo.InsertFormResponseAnswerAsync(headerId, userId, form.FormKey ?? formKey,
+                            a.FieldId, "file", "");
                         continue;
                     }
-                    // Decode base64 (strip data URL if present)
-                    string b64 = a.FileBase64!;
+        
+                    // strip "data:*;base64," if present
+                    var b64 = a.FileBase64!;
                     var comma = b64.IndexOf(',');
                     if (comma >= 0) b64 = b64[(comma + 1)..];
+        
                     byte[] bytes;
                     try { bytes = Convert.FromBase64String(b64); }
                     catch { throw new InvalidOperationException($"Invalid base64 for '{field.Label}'."); }
-                    // (Optional) size limit
+        
                     const long MAX = 10L * 1024 * 1024; // 10 MB
                     if (bytes.LongLength > MAX)
                         throw new InvalidOperationException($"'{field.Label}' exceeds 10 MB.");
+        
                     var fileId = await _repo.InsertFileAsync(
                         responseId: headerId,
                         formKey: form.FormKey ?? formKey,
@@ -162,26 +161,17 @@ namespace FormBuilderAPI.Services
                         sizeBytes: bytes.LongLength,
                         blob: bytes
                     );
+        
                     var token = $"file:{fileId}";
-                    await _repo.InsertFormResponseAnswerAsync(
-                        responseId: headerId,
-                        userId: userId,
-                        formKey: form.FormKey ?? formKey,
-                        fieldId: a.FieldId,
-                        fieldType: "file",
-                        answerValue: token
-                    );
+                    await _repo.InsertFormResponseAnswerAsync(headerId, userId, form.FormKey ?? formKey,
+                        a.FieldId, "file", token);
                     continue; // important
                 }
-
-                await _repo.InsertFormResponseAnswerAsync(
-                    responseId: headerId,
-                    userId: userId,
-                    formKey: form.FormKey ?? formKey,
-                    fieldId: a.FieldId,
-                    fieldType: enumType,
-                    answerValue: stored
-                );
+    
+                // ===== Non-file path =====
+                var enumType = MapToSqlFieldType(t);
+                await _repo.InsertFormResponseAnswerAsync(headerId, userId, form.FormKey ?? formKey,
+                    a.FieldId, enumType, stored);
             }
 
             return headerId;

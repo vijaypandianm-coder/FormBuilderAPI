@@ -1,14 +1,14 @@
-
 // Application/Services/FormAppService.cs
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using FormBuilderAPI.Helpers;                 // FieldTypeHelper (your Helpers folder)
+using FormBuilderAPI.Helpers;                 // FieldTypeHelper
 using FormBuilderAPI.Application.Interfaces;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.DTOs;
 using FormBuilderAPI.Models.MongoModels;
+using FormBuilderAPI.Models.SqlModels;       // <-- needed for FormKey (SQL)
 using FormBuilderAPI.Services;               // FormService, AssignmentService
 using Microsoft.EntityFrameworkCore;
 
@@ -18,7 +18,7 @@ namespace FormBuilderAPI.Application.Services
     {
         private readonly IFormService _forms;
         private readonly SqlDbContext _db;
-        private readonly AssignmentService _assignments;   // ✅ add this
+        private readonly AssignmentService _assignments;
 
         public FormAppService(IFormService forms, SqlDbContext db, AssignmentService assignments)
         {
@@ -26,6 +26,7 @@ namespace FormBuilderAPI.Application.Services
             _db = db;
             _assignments = assignments;
         }
+
         // ------------ helpers ------------
         private static List<FieldOption>? BuildOptions(string type, List<string>? incoming)
         {
@@ -96,6 +97,7 @@ namespace FormBuilderAPI.Application.Services
 
         public async Task<FormOutDto> CreateMetaAsync(string createdBy, FormMetaDto meta)
         {
+            // 1) Create in Mongo (no numeric key yet)
             var form = new Form
             {
                 Title = meta.Title,
@@ -112,6 +114,19 @@ namespace FormBuilderAPI.Application.Services
             };
 
             var created = await _forms.CreateFormAsync(form);
+
+            // 2) Allocate the SQL numeric key immediately to avoid FK issues later
+            //    This guarantees Responses can always reference a valid FormKey.
+            var keyRow = new FormKey { FormId = created.Id };
+            _db.FormKeys.Add(keyRow);
+            await _db.SaveChangesAsync();
+
+            // 3) Sync numeric key back to Mongo
+            created.FormKey = keyRow.Id;     // SQL auto-increment Id
+            created.UpdatedAt = DateTime.UtcNow;
+            await _forms.UpdateFormAsync(created.Id, created);
+
+            // 4) Return (no layout in meta response as before)
             return MapToOut(created, includeLayout: false);
         }
 
@@ -203,47 +218,6 @@ namespace FormBuilderAPI.Application.Services
             return MapToOut(updated!, includeLayout: true);
         }
 
-        /*public async Task<FormOutDto> SetFieldAsync(int formKey, SingleFieldDto dto)
-        {
-            var form = await _forms.GetByFormKeyAsync(formKey)
-                       ?? throw new KeyNotFoundException("Form not found.");
-            if (string.Equals(form.Status, "Published", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Form is Published and cannot be edited.");
-
-            if (form.Layout.Count == 0)
-                form.Layout.Add(new FormSection { SectionId = Guid.NewGuid().ToString("N"), Title = "Questions" });
-
-            var section = form.Layout[0];
-
-            if (section.Fields.Count == 0 && string.IsNullOrWhiteSpace(dto.FieldId))
-            {
-                section.Fields.Add(new FormField
-                {
-                    FieldId    = Guid.NewGuid().ToString("N"),
-                    Label      = dto.Label,
-                    Type       = dto.Type,
-                    IsRequired = dto.IsRequired,
-                    Options    = BuildOptions(dto.Type, dto.Options)
-                });
-            }
-            else
-            {
-                var target = string.IsNullOrWhiteSpace(dto.FieldId)
-                    ? section.Fields[0]
-                    : section.Fields.FirstOrDefault(f => f.FieldId == dto.FieldId)
-                      ?? section.Fields[0];
-
-                target.Label      = dto.Label;
-                target.Type       = dto.Type;
-                target.IsRequired = dto.IsRequired;
-                target.Options    = BuildOptions(dto.Type, dto.Options);
-            }
-
-            form.UpdatedAt = DateTime.UtcNow;
-            var updated = await _forms.UpdateFormAsync(form.Id, form);
-            return MapToOut(updated!, includeLayout: true);
-        }*/
-
         public async Task<FormOutDto> GetByKeyAsync(int formKey, bool allowPreview, bool isAdmin)
         {
             var form = await _forms.GetByFormKeyAsync(formKey)
@@ -275,6 +249,16 @@ namespace FormBuilderAPI.Application.Services
 
             if (string.Equals(status, "Published", StringComparison.OrdinalIgnoreCase))
             {
+                // 🔑 self-heal older forms created before this fix
+                if (form.FormKey == null)
+                {
+                    var key = new FormKey { FormId = form.Id };
+                    _db.FormKeys.Add(key);
+                    await _db.SaveChangesAsync();
+
+                    form.FormKey = key.Id;   // sync numeric key from SQL
+                }
+
                 form.Status = "Published";
                 form.PublishedAt = DateTime.UtcNow;
             }

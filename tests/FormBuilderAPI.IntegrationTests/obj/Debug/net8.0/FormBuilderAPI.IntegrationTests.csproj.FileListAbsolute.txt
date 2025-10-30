@@ -1,0 +1,8 @@
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\bin\Debug\net8.0\CoverletSourceRootsMapping_FormBuilderAPI.IntegrationTests
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.csproj.AssemblyReference.cache
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\MvcTestingAppManifest.json
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.AssemblyInfoInputs.cache
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.AssemblyInfo.cs
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.csproj.CoreCompileInputs.cache
+C:\Users\vijaypandian.m_dispr\FormBuilderAPI_dummy\tests\FormBuilderAPI.IntegrationTests\obj\Debug\net8.0\FormBuilderAPI.IntegrationTests.sourcelink.json

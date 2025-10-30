@@ -29,7 +29,9 @@ namespace FormBuilderAPI.UnitTests.Application
         private static FormService DummyFormService()
         {
             // Create an uninitialized instance to satisfy the ctor. We won't call it.
+            #pragma warning disable SYSLIB0050 // Type or member is obsolete
             return (FormService)FormatterServices.GetUninitializedObject(typeof(FormService));
+            #pragma warning restore SYSLIB0050 // Type or member is obsolete
         }
 
         [Fact]

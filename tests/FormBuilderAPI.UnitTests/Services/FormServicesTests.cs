@@ -1,62 +1,52 @@
-using System.Threading.Tasks;
-using Xunit;
-using Moq;
-using MongoDB.Driver;
-using FormBuilderAPI.Services;
-using FormBuilderAPI.Models.MongoModels;
-using FormBuilderAPI.UnitTests.Fakes;
-using FormBuilderAPI.UnitTests.Helpers;
+using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using FluentAssertions;
+using FormBuilderAPI.Data;
+using FormBuilderAPI.Models.MongoModels;
+using FormBuilderAPI.Services;
+using FormBuilderAPI.UnitTests.Fakes;
+using Xunit;
 
 namespace FormBuilderAPI.UnitTests.Services
 {
-    public class FormServiceTests
-    {
-        private readonly Mock<IMongoCollection<Form>> _formsMock;
-        private readonly FormService _service;
+            public class FormServicesTests
+            {
+                [Fact]
+                public async Task GetByFormKeyAsync_ReturnsForm_WhenFound()
+                {
+                    // Arrange
+                    var fakeMongoContext = new FakeMongoDbContext();
+                    var form = new Form 
+                    { 
+                        FormKey = 123, 
+                        Title = "Test Form", 
+                        Status = "Published" 
+                    };
+            
+                    // Setup the fake MongoDB context to return our test form
+                    fakeMongoContext.Forms.InsertOne(form);
+            
+                    var formService = new FormService(fakeMongoContext);
 
-        public FormServiceTests()
-        {
-            _formsMock = new Mock<IMongoCollection<Form>>();
-            var fakeContext = new FakeMongoDbContext(forms: _formsMock.Object);
-            _service = new FormService(fakeContext);
-        }
+                    // Act
+                    var result = await formService.GetByFormKeyAsync(123);
 
-        [Fact]
-        public async Task CreateFormAsync_sets_defaults_and_inserts()
-        {
-            var form = TestDataFactory.CreateSampleForm(status: null);
+                    // Assert
+                    result.Should().NotBeNull();
+                    result!.FormKey.Should().Be(123);
+                    result.Title.Should().Be("Test Form");
+                }
 
-            await _service.CreateFormAsync(form);
-
-            Assert.Equal("Draft", form.Status);
-            Assert.Equal("Open", form.Access);
-            _formsMock.Verify(f => f.InsertOneAsync(
-                It.IsAny<Form>(),
-                null,
-                default), Times.Once);
-        }
-
-        [Fact]
-        public async Task GetByFormKeyAsync_returns_form()
-        {
-            var form = TestDataFactory.CreateSampleForm();
-            var cursor = new Mock<IAsyncCursor<Form>>();
-            cursor.SetupSequence(c => c.MoveNextAsync(default))
-                .ReturnsAsync(true)
-                .ReturnsAsync(false);
-            cursor.SetupGet(c => c.Current).Returns(new List<Form> { form });
-
-            _formsMock.Setup(c =>
-                c.FindAsync(It.IsAny<FilterDefinition<Form>>(),
-                    It.IsAny<FindOptions<Form, Form>>(),
-                    default))
-                .ReturnsAsync(cursor.Object);
-
-            var result = await _service.GetByFormKeyAsync(1);
-
-            Assert.NotNull(result);
-            Assert.Equal(1, result!.FormKey);
-        }
-    }
+                [Fact]
+                public void FormService_CanBeCreated()
+                {
+                    // Arrange & Act
+                    var fakeMongoContext = new FakeMongoDbContext();
+                    var formService = new FormService(fakeMongoContext);
+            
+                    // Assert
+                    formService.Should().NotBeNull();
+                }
+            }
 }

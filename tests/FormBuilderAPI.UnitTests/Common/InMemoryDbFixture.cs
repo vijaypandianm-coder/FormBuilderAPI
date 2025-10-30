@@ -2,21 +2,22 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using FormBuilderAPI.Data;
 
-namespace FormBuilderAPI.UnitTests.Common;
-
-public sealed class InMemoryDbFixture : IDisposable
+namespace FormBuilderAPI.UnitTests.Common
 {
-    public SqlDbContext Db { get; }
-
-    public InMemoryDbFixture()
+    public sealed class InMemoryDbFixture : IDisposable
     {
-        var options = new DbContextOptionsBuilder<SqlDbContext>()
-            .UseInMemoryDatabase($"fbapi_unit_{Guid.NewGuid():N}")
-            .Options;
+        public SqlDbContext Db { get; }
 
-        Db = new SqlDbContext(options);
-        Db.Database.EnsureCreated();
+        public InMemoryDbFixture()
+        {
+            var options = new DbContextOptionsBuilder<SqlDbContext>()
+                .UseInMemoryDatabase($"fbapi_unit_{Guid.NewGuid():N}")
+                .Options;
+
+            Db = new SqlDbContext(options);
+            Db.Database.EnsureCreated();
+        }
+
+        public void Dispose() => Db.Dispose();
     }
-
-    public void Dispose() => Db.Dispose();
 }

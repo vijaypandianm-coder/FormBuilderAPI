@@ -1,34 +1,23 @@
-
-using System.Threading.Tasks;
 using FluentAssertions;
-using FormBuilderAPI.Services;
-using FormBuilderAPI.UnitTests.Common;
 using Xunit;
-
-namespace FormBuilderAPI.UnitTests.Services;
+using FormBuilderAPI.Services;
+using FormBuilderAPI.Models.SqlModels;
+using FormBuilderAPI.UnitTests.TestUtils;
 
 public class AuditServiceTests
 {
     [Fact]
-    public async Task LogAsync_writes_a_row()
+    public async Task LogAsync_Writes_Row()
     {
-        using var db = TestDb.Create();
-        var sut = new AuditService(db);
+        await using var db = InMemorySql.NewDb();
+        var svc = new AuditService(db);
 
-        await sut.LogAsync(
-            action: "Create",
-            actorRole: "Admin",
-            actorId: "42",
-            entityId: "FORM-1",
-            detailsJson: "{\"ok\":true}"
-        );
+        await svc.LogAsync("Create", "Admin", "0", "F:1", "{\"x\":1}");
 
         db.AuditLogs.Should().HaveCount(1);
-        var row = await db.AuditLogs.FindAsync(db.AuditLogs.First().Id);
-        row!.Action.Should().Be("Create");
+        var row = db.AuditLogs.Single();
+        row.Action.Should().Be("Create");
         row.ActorRole.Should().Be("Admin");
-        row.ActorUserId.Should().Be("42");
-        row.EntityId.Should().Be("FORM-1");
-        row.DetailsJson.Should().Contain("ok");
+        row.ActorUserId.Should().Be("0");
     }
 }

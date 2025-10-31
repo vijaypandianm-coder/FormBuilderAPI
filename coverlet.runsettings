@@ -9,7 +9,7 @@
 
           <!-- Exclude files -->
           <ExcludeByFile>**/Migrations/*.cs</ExcludeByFile>
-          <ExcludeByFile>Calendar/Program.cs</ExcludeByFile>
+          <ExcludeByFile>FormBuilderAPI/Program.cs</ExcludeByFile>
           <ExcludeByFile>**/Startup.cs</ExcludeByFile>
 
           <!-- Exclude types/classes -->

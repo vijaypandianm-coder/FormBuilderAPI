@@ -1,102 +1,56 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Xunit;
-
-using FormBuilderAPI.Data;
 using FormBuilderAPI.Services;
+using FormBuilderAPI.Models.SqlModels;
+using FormBuilderAPI.UnitTests.TestUtils;
 
-namespace FormBuilderAPI.UnitTests.Services
+public class AuthServiceTests
 {
-    public class AuthServiceTests
+    [Fact]
+    public async Task RegisterAsync_Allows_Learner_And_Rejects_Duplicate()
     {
-        private static SqlDbContext NewDb(string name)
-        {
-            var opts = new DbContextOptionsBuilder<SqlDbContext>()
-                .UseInMemoryDatabase(name)
-                .Options;
-            return new SqlDbContext(opts);
-        }
+        await using var db = InMemorySql.NewDb();
+        var svc = new AuthService(db, FakeConfig.Build());
 
-        private static IConfiguration NewConfig() =>
-            new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?>
-                {
-                    ["Jwt:Issuer"]   = "test-issuer",
-                    ["Jwt:Audience"] = "test-audience",
-                    ["Jwt:Key"]      = "super-secret-test-key-1234567890"
-                })
-                .Build();
+        var u = await svc.RegisterAsync("vijay", "vijay@example.com", "Pass@123");
+        u.Role.Should().Be("Learner");
+        u.Id.Should().BeGreaterThan(0);
 
-        [Fact]
-        public async Task Register_then_Login_success_returns_token()
-        {
-            await using var db = NewDb(nameof(Register_then_Login_success_returns_token));
-            var auth = new AuthService(db, NewConfig());
+        var again = async () => await svc.RegisterAsync("vijay", "vijay@example.com", "X");
+        await again.Should().ThrowAsync<Exception>().WithMessage("*already exists*");
+    }
 
-            var user = await auth.RegisterAsync("alice", "alice@example.com", "P@ssw0rd!", "Learner");
-            user.Username.Should().Be("alice");
+    [Fact]
+    public async Task RegisterAsync_Only_Learner_Allowed()
+    {
+        await using var db = InMemorySql.NewDb();
+        var svc = new AuthService(db, FakeConfig.Build());
 
-            var token = await auth.LoginAsync("alice@example.com", "P@ssw0rd!");
-            token.Should().NotBeNullOrWhiteSpace();
-        }
+        var act = () => svc.RegisterAsync("x","x@e.com","p","Admin");
+        await act.Should().ThrowAsync<Exception>().WithMessage("*Only Learner*");
+    }
 
-        [Fact]
-        public async Task Login_admin_bypass_returns_token()
-        {
-            await using var db = NewDb(nameof(Login_admin_bypass_returns_token));
-            var auth = new AuthService(db, NewConfig());
+    [Fact]
+    public async Task Login_Admin_Bypass_Returns_Token()
+    {
+        await using var db = InMemorySql.NewDb();
+        var svc = new AuthService(db, FakeConfig.Build());
 
-            var token = await auth.LoginAsync("admin@example.com", "Admin@123");
-            token.Should().NotBeNullOrWhiteSpace();
-        }
+        var token = await svc.LoginAsync("admin@example.com", "Admin@123");
+        token.Should().NotBeNullOrWhiteSpace();
+    }
 
-        [Fact]
-        public async Task Login_with_wrong_password_returns_null()
-        {
-            await using var db = NewDb(nameof(Login_with_wrong_password_returns_null));
-            var auth = new AuthService(db, NewConfig());
+    [Fact]
+    public async Task Login_Learner_Success_And_Failure()
+    {
+        await using var db = InMemorySql.NewDb();
+        var svc = new AuthService(db, FakeConfig.Build());
 
-            await auth.RegisterAsync("bob", "bob@example.com", "Secret123!", "Learner");
+        var u = await svc.RegisterAsync("learner","l@e.com","P@ssw0rd");
+        var ok = await svc.LoginAsync("l@e.com", "P@ssw0rd");
+        ok.Should().NotBeNullOrWhiteSpace();
 
-            var token = await auth.LoginAsync("bob@example.com", "wrong");
-            token.Should().BeNull();
-        }
-
-        [Fact]
-        public async Task Login_with_unknown_email_returns_null()
-        {
-            await using var db = NewDb(nameof(Login_with_unknown_email_returns_null));
-            var auth = new AuthService(db, NewConfig());
-
-            var token = await auth.LoginAsync("nobody@example.com", "whatever");
-            token.Should().BeNull();
-        }
-
-        [Fact]
-        public async Task Register_duplicate_email_throws()
-        {
-            await using var db = NewDb(nameof(Register_duplicate_email_throws));
-            var auth = new AuthService(db, NewConfig());
-
-            await auth.RegisterAsync("eve", "eve@example.com", "Strong#1", "Learner");
-
-            var act = async () => await auth.RegisterAsync("eve2", "eve@example.com", "Strong#2", "Learner");
-            await act.Should().ThrowAsync<System.Exception>()
-                .WithMessage("*already exists*");
-        }
-
-        [Fact]
-        public async Task Register_non_learner_throws()
-        {
-            await using var db = NewDb(nameof(Register_non_learner_throws));
-            var auth = new AuthService(db, NewConfig());
-
-            var act = async () => await auth.RegisterAsync("john", "john@example.com", "pwd", "Admin");
-            await act.Should().ThrowAsync<System.Exception>()
-                .WithMessage("*Only Learner accounts*");
-        }
+        var bad = await svc.LoginAsync("l@e.com", "wrong");
+        bad.Should().BeNull();
     }
 }

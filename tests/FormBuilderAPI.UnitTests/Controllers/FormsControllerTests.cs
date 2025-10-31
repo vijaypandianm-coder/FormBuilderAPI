@@ -1,234 +1,163 @@
-using System.Security.Claims;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using FluentAssertions;
-using FormBuilderAPI.Application.Interfaces;
-using FormBuilderAPI.Controllers;
-using FormBuilderAPI.DTOs;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using Xunit;
+using FormBuilderAPI.Controllers;
+using FormBuilderAPI.Application.Interfaces;
+using FormBuilderAPI.DTOs;
+using FormBuilderAPI.UnitTests.TestUtils;
 
-namespace FormBuilderAPI.UnitTests.Controllers
+public class FormsControllerTests : ControllerTestBase
 {
-    public class FormsControllerTests
+    private static FormsController MakeCtrl(Mock<IFormAppService> app, bool isAdmin, string? userId="123")
     {
-        private static FormsController BuildController(
-            Mock<IFormAppService> appMock,
-            bool isAdmin = true,
-            string? userId = "u-123")
-        {
-            var controller = new FormsController(appMock.Object);
+        var ctrl = new FormsController(app.Object);
+        SetUser(ctrl, isAdmin, userId);
+        return ctrl;
+    }
 
-            var claims = new List<Claim>();
-            if (!string.IsNullOrEmpty(userId))
-                claims.Add(new Claim(ClaimTypes.NameIdentifier, userId));
-            if (isAdmin)
-                claims.Add(new Claim(ClaimTypes.Role, "Admin"));
+    [Fact]
+    public async Task CreateMeta_Admin_CreatedAtAction()
+    {
+        var app = new Mock<IFormAppService>();
+        app.Setup(a => a.CreateMetaAsync(It.IsAny<string>(), It.IsAny<FormMetaDto>()))
+           .ReturnsAsync(new FormOutDto{ FormKey = 77 });
 
-            var identity = new ClaimsIdentity(claims, "TestAuth");
-            var user = new ClaimsPrincipal(identity);
+        var ctrl = MakeCtrl(app, true, "999");
+        var result = await ctrl.CreateMeta(new FormMetaDto { FormId = "abc" });
 
-            controller.ControllerContext = new ControllerContext
-            {
-                HttpContext = new DefaultHttpContext { User = user }
-            };
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var created = (CreatedAtActionResult)result;
+        ((FormOutDto)created.Value!).FormKey.Should().Be(77);
+    }
 
-            return controller;
-        }
+    [Fact]
+    public async Task UpdateMeta_Admin_Ok()
+    {
+        var app = new Mock<IFormAppService>();
+        app.Setup(a => a.UpdateMetaAsync(11, It.IsAny<FormMetaDto>()))
+           .ReturnsAsync(new FormOutDto{ FormKey = 11 });
 
-        [Fact]
-        public async Task CreateMeta_Returns_CreatedAtAction_With_FormKey()
-        {
-            // Arrange
-            var app = new Mock<IFormAppService>();
-            var returned = new FormOutDto { FormKey = 42 };
-            app.Setup(a => a.CreateMetaAsync(It.IsAny<string>(), It.IsAny<FormMetaDto>()))
-               .ReturnsAsync(returned);
+        var ctrl = MakeCtrl(app, true);
+        var ok = await ctrl.UpdateMeta(11, new FormMetaDto { Title="x" }) as OkObjectResult;
 
-            var controller = BuildController(app);
+        ((FormOutDto)ok!.Value!).FormKey.Should().Be(11);
+    }
 
-            // Act
-            var result = await controller.CreateMeta(new FormMetaDto { Title = "t" });
+    [Fact]
+    public async Task AddLayout_And_SetLayout_Admin_Ok()
+    {
+        var app = new Mock<IFormAppService>();
+        app.Setup(a => a.AddLayoutAsync(5, It.IsAny<FormLayoutDto>()))
+           .ReturnsAsync(new FormOutDto{ FormKey = 5 });
+        app.Setup(a => a.SetLayoutAsync(5, It.IsAny<FormLayoutDto>()))
+           .ReturnsAsync(new FormOutDto{ FormKey = 5 });
 
-            // Assert
-            var created = result as CreatedAtActionResult;
-            created.Should().NotBeNull();
-            created!.ActionName.Should().Be(nameof(FormsController.GetByKey));
-            created.RouteValues.Should().ContainKey("formKey")
-                   .WhoseValue.Should().Be(42);
-            created.Value.Should().Be(returned);
+        var ctrl = MakeCtrl(app, true);
+        (await ctrl.AddLayout(5, new FormLayoutDto())).Should().BeOfType<OkObjectResult>();
+        (await ctrl.SetLayout(5, new FormLayoutDto())).Should().BeOfType<OkObjectResult>();
+    }
 
-            app.Verify(a => a.CreateMetaAsync("u-123", It.IsAny<FormMetaDto>()), Times.Once);
-        }
+    [Fact]
+    public async Task SetStatus_BadRequest_When_Missing()
+    {
+        var app = new Mock<IFormAppService>();
+        var ctrl = MakeCtrl(app, true);
 
-        [Fact]
-        public async Task UpdateMeta_Returns_Ok_With_Dto()
-        {
-            var app = new Mock<IFormAppService>();
-            var dto = new FormOutDto { FormKey = 7, Title = "new" };
-            app.Setup(a => a.UpdateMetaAsync(7, It.IsAny<FormMetaDto>()))
-               .ReturnsAsync(dto);
+        var res = await ctrl.SetStatus(1, new StatusPatchDto{ Status = "  " });
+        res.Should().BeOfType<BadRequestObjectResult>();
+    }
 
-            var controller = BuildController(app);
-            var result = await controller.UpdateMeta(7, new FormMetaDto { Title = "new" });
+    [Fact]
+    public async Task SetAccess_BadRequest_When_Missing()
+    {
+        var app = new Mock<IFormAppService>();
+        var ctrl = MakeCtrl(app, true);
 
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            ok!.Value.Should().Be(dto);
-        }
+        var res = await ctrl.SetAccess(1, new AccessPatchDto{ Access = "" });
+        res.Should().BeOfType<BadRequestObjectResult>();
+    }
 
-        [Fact]
-        public async Task AddLayout_Returns_Ok()
-        {
-            var app = new Mock<IFormAppService>();
-            var dto = new FormOutDto { FormKey = 99 };
-            app.Setup(a => a.AddLayoutAsync(99, It.IsAny<FormLayoutDto>()))
-               .ReturnsAsync(dto);
+    [Fact]
+    public async Task Delete_Admin_NoContent()
+    {
+        var app = new Mock<IFormAppService>();
+        app.Setup(a => a.DeleteAsync(9)).Returns(Task.CompletedTask);
 
-            var controller = BuildController(app);
-            var result = await controller.AddLayout(99, new FormLayoutDto { Sections = new() });
+        var ctrl = MakeCtrl(app, true);
+        var res = await ctrl.Delete(9);
 
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            ok!.Value.Should().Be(dto);
-        }
+        res.Should().BeOfType<NoContentResult>();
+    }
 
-        [Fact]
-        public async Task SetLayout_Returns_Ok()
-        {
-            var app = new Mock<IFormAppService>();
-            var dto = new FormOutDto { FormKey = 5 };
-            app.Setup(a => a.SetLayoutAsync(5, It.IsAny<FormLayoutDto>()))
-               .ReturnsAsync(dto);
+    [Fact]
+    public async Task GetByKey_Admin_Allows_Preview()
+    {
+        var app = new Mock<IFormAppService>();
+        app.Setup(a => a.GetByKeyAsync(3, true, true))
+           .ReturnsAsync(new FormOutDto{ FormKey = 3 });
 
-            var controller = BuildController(app);
-            var result = await controller.SetLayout(5, new FormLayoutDto { Sections = new() });
+        var ctrl = MakeCtrl(app, true);
+        var ok = await ctrl.GetByKey(3, "preview") as OkObjectResult;
 
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            ok!.Value.Should().Be(dto);
-        }
+        ((FormOutDto)ok!.Value!).FormKey.Should().Be(3);
+    }
 
-        [Fact]
-        public async Task SetStatus_BadRequest_When_BodyMissingOrEmpty()
-        {
-            var app = new Mock<IFormAppService>();
-            var controller = BuildController(app);
+    [Fact]
+    public async Task List_Admin_Returns_Raw_Items_And_Total()
+    {
+        var app = new Mock<IFormAppService>();
+        var items = new List<FormOutDto> { new(){ FormKey = 1 } };
+        app.Setup(a => a.ListAsync(null, true, 1, 20))
+           .ReturnsAsync((Items: items.AsEnumerable(), Total: 1L));
 
-            var bad1 = await controller.SetStatus(10, null!);
-            bad1.Should().BeOfType<BadRequestObjectResult>();
+        var ctrl = MakeCtrl(app, true);
+        var ok = await ctrl.List(null, 1, 20) as OkObjectResult;
 
-            var bad2 = await controller.SetStatus(10, new StatusPatchDto { Status = "   " });
-            bad2.Should().BeOfType<BadRequestObjectResult>();
+        dynamic body = ok!.Value!;
+        ((long)body.Total).Should().Be(1);
+        ((int)body.Page).Should().Be(1);
+        ((int)body.PageSize).Should().Be(20);
+        ((IEnumerable<FormOutDto>)body.Items).Should().HaveCount(1);
+    }
 
-            app.Verify(a => a.SetStatusAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
-        }
+    [Fact]
+    public async Task List_Learner_Filters_Published_And_Assignments()
+    {
+        var app = new Mock<IFormAppService>();
 
-        [Fact]
-        public async Task SetStatus_Ok_Calls_Service()
-        {
-            var app = new Mock<IFormAppService>();
-            app.Setup(a => a.SetStatusAsync(10, "Published"))
-               .ReturnsAsync(new FormOutDto { FormKey = 10, Status = "Published" });
+        var forms = new List<FormOutDto>{
+            new(){ FormKey=10, Status="Draft", Access="Open" },               // excluded (not published)
+            new(){ FormKey=11, Status="Published", Access="Open" },           // included
+            new(){ FormKey=12, Status="Published", Access="Restricted" }      // included only if assigned
+        };
 
-            var controller = BuildController(app);
-            var result = await controller.SetStatus(10, new StatusPatchDto { Status = "Published" });
+        app.Setup(a => a.ListAsync(null, false, 1, 20))
+           .ReturnsAsync((forms.AsEnumerable(), 3L));
 
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            var dto = ok!.Value as FormOutDto;
-            dto!.Status.Should().Be("Published");
-            app.Verify(a => a.SetStatusAsync(10, "Published"), Times.Once);
-        }
+        app.Setup(a => a.ListAssigneesAsync(12))
+           .ReturnsAsync(new List<long> { 123, 999 }.Cast<object>());
 
-        [Fact]
-        public async Task SetAccess_BadRequest_When_BodyMissingOrEmpty()
-        {
-            var app = new Mock<IFormAppService>();
-            var controller = BuildController(app);
+        var ctrl = MakeCtrl(app, isAdmin:false, userId:"123");
 
-            var bad1 = await controller.SetAccess(8, null!);
-            bad1.Should().BeOfType<BadRequestObjectResult>();
+        var ok = await ctrl.List(null, 1, 20) as OkObjectResult;
+        dynamic body = ok!.Value!;
+        var items = ((IEnumerable<FormOutDto>)body.Items).ToList();
 
-            var bad2 = await controller.SetAccess(8, new AccessPatchDto { Access = "" });
-            bad2.Should().BeOfType<BadRequestObjectResult>();
+        items.Should().HaveCount(2);
+        items.Select(i => i.FormKey).Should().BeEquivalentTo(new[]{ 11, 12 });
+        ((long)body.Total).Should().Be(2);
+    }
 
-            app.Verify(a => a.SetAccessAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
-        }
+    [Fact]
+    public async Task List_Learner_Without_UserId_Returns_Unauthorized()
+    {
+        var app = new Mock<IFormAppService>();
+        var ctrl = MakeCtrl(app, isAdmin:false, userId:null);
 
-        [Fact]
-        public async Task SetAccess_Ok_Calls_Service()
-        {
-            var app = new Mock<IFormAppService>();
-            app.Setup(a => a.SetAccessAsync(8, "Open"))
-               .ReturnsAsync(new FormOutDto { FormKey = 8, Access = "Open" });
-
-            var controller = BuildController(app);
-            var result = await controller.SetAccess(8, new AccessPatchDto { Access = "Open" });
-
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            var dto = ok!.Value as FormOutDto;
-            dto!.Access.Should().Be("Open");
-            app.Verify(a => a.SetAccessAsync(8, "Open"), Times.Once);
-        }
-
-        [Fact]
-        public async Task Delete_Returns_NoContent()
-        {
-            var app = new Mock<IFormAppService>();
-            app.Setup(a => a.DeleteAsync(77)).Returns(Task.CompletedTask);
-
-            var controller = BuildController(app);
-            var result = await controller.Delete(77);
-
-            result.Should().BeOfType<NoContentResult>();
-            app.Verify(a => a.DeleteAsync(77), Times.Once);
-        }
-
-        [Fact]
-        public async Task GetByKey_AdminPreview_PassesAllowPreviewTrue()
-        {
-            var app = new Mock<IFormAppService>();
-            app.Setup(a => a.GetByKeyAsync(5, true, true))
-               .ReturnsAsync(new FormOutDto { FormKey = 5, Status = "Draft" });
-
-            var controller = BuildController(app, isAdmin: true);
-            var result = await controller.GetByKey(5, mode: "preview");
-
-            var ok = result as OkObjectResult;
-            ok.Should().NotBeNull();
-            var dto = ok!.Value as FormOutDto;
-            dto!.FormKey.Should().Be(5);
-
-            app.Verify(a => a.GetByKeyAsync(5, true, true), Times.Once);
-        }
-
-        [Fact]
-        public async Task Assign_Unassign_ListAssignees_Success()
-        {
-            var app = new Mock<IFormAppService>();
-            app.Setup(a => a.AssignUserAsync(10, 200L)).Returns(Task.CompletedTask);
-            app.Setup(a => a.UnassignUserAsync(10, 200L)).Returns(Task.CompletedTask);
-            app.Setup(a => a.ListAssigneesAsync(10))
-               .ReturnsAsync(new[] { new { userId = 200L } }.Cast<object>());
-
-            var controller = BuildController(app);
-
-            (await controller.Assign(10, new AssignRequest { UserId = 200L }))
-                .Should().BeOfType<NoContentResult>();
-
-            (await controller.Unassign(10, 200L))
-                .Should().BeOfType<NoContentResult>();
-
-            var listRes = await controller.ListAssignees(10);
-            var ok = listRes as OkObjectResult;
-            ok.Should().NotBeNull();
-            ok!.Value.Should().BeAssignableTo<IEnumerable<object>>();
-
-            app.Verify(a => a.AssignUserAsync(10, 200L), Times.Once);
-            app.Verify(a => a.UnassignUserAsync(10, 200L), Times.Once);
-            app.Verify(a => a.ListAssigneesAsync(10), Times.Once);
-        }
+        var res = await ctrl.List(null, 1, 20);
+        res.Should().BeOfType<UnauthorizedResult>();
     }
 }

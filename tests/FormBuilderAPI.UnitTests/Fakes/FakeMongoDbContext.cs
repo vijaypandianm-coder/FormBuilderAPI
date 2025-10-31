@@ -1,32 +1,28 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using MongoDB.Driver;
 using FormBuilderAPI.Data;
 using FormBuilderAPI.Models.MongoModels;
-using MongoDB.Driver;
 using Moq;
 
 namespace FormBuilderAPI.UnitTests.Fakes
 {
-    /// <summary>
-    /// A fake MongoDbContext you can inject into FormService
-    /// so you can control/mock the collections.
-    /// </summary>
-    public class FakeMongoDbContext : MongoDbContext
+    public class FakeMongoDbContext 
     {
-        private readonly Mock<IMongoCollection<Form>> _mockFormsCollection;
+        private readonly Mock<IMongoCollection<Form>> _mockForms;
+        private readonly Mock<IMongoCollection<Counter>> _mockCounters;
 
         public FakeMongoDbContext()
-            : base(Microsoft.Extensions.Options.Options.Create(
-                new MongoDbSettings { ConnectionString = "mongodb://localhost:27017", DatabaseName = "FakeDb" }))
         {
-            _mockFormsCollection = new Mock<IMongoCollection<Form>>();
-            Forms = _mockFormsCollection.Object;
+            _mockForms = new Mock<IMongoCollection<Form>>();
+            _mockCounters = new Mock<IMongoCollection<Counter>>();
         }
 
-        public override IMongoCollection<Form> Forms { get; }
-            = new Mock<IMongoCollection<Form>>().Object;
-        public override IMongoCollection<Workflow> Workflows { get; }
-            = new Mock<IMongoCollection<Workflow>>().Object;
-        public override IMongoCollection<Counter> Counters { get; }
-            = new Mock<IMongoCollection<Counter>>().Object;
+        public IMongoCollection<Form> Forms => _mockForms.Object;
+        public IMongoCollection<Counter> Counters => _mockCounters.Object;
 
         public void SetupFindAsync(Form form)
         {
@@ -36,7 +32,7 @@ namespace FormBuilderAPI.UnitTests.Fakes
                 .ReturnsAsync(true)
                 .ReturnsAsync(false);
 
-            _mockFormsCollection
+            _mockForms
                 .Setup(c => c.FindAsync(
                     It.IsAny<FilterDefinition<Form>>(),
                     It.IsAny<FindOptions<Form>>(),
@@ -52,7 +48,7 @@ namespace FormBuilderAPI.UnitTests.Fakes
                 .ReturnsAsync(true)
                 .ReturnsAsync(false);
 
-            _mockFormsCollection
+            _mockForms
                 .Setup(c => c.FindAsync(
                     It.IsAny<FilterDefinition<Form>>(),
                     It.IsAny<FindOptions<Form>>(),
